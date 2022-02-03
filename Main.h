@@ -2,9 +2,21 @@
 
 typedef struct GAMEBITMAP 
 {
+
 	BITMAPINFO Bitmapinfo; // includes height, width and others (data structure)
 	void* Memory;
+
 } GAMEBITMAP;
+
+typedef struct PIXEL32 
+{
+
+	uint8_t Blue; // same as unsigned char, comes from <stdint.h>
+	uint8_t Green;
+	uint8_t Red;
+	uint8_t Alpha;
+
+} PIXEL32;
 
 INT __stdcall WinMain(HINSTANCE Instance, HINSTANCE PreviousInstance, PSTR CommandLine, INT CommandShow);
 

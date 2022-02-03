@@ -7,18 +7,24 @@
 // pop out current level of warning (from  to level 4)
 #pragma warning(pop)
 // its important that this is included after windows.h
+#include <stdint.h>
 #include "Main.h"
 
 #define GAME_NAME "GAMEB"
 #define GAME_RES_WIDTH   384
-#define GAME_RES_HEIGHT   216
+#define GAME_RES_HEIGHT   240
 #define GAME_BPP 32
 #define GAME_DRAWING_AREA_MEMORY_SIZE (GAME_RES_WIDTH  * GAME_RES_HEIGHT * (GAME_BPP  / 8))
 BOOL gGameIsRunning; // gloabal variable, its automatically initialized to zero (false)
 
 HWND gGameWindow;
 
-GAMEBITMAP gDrawingSurface;
+GAMEBITMAP gBackBuffer;
+
+MONITORINFO gMonitorInfo = { sizeof(MONITORINFO) };
+
+int32_t gMonitorWidth;
+int32_t gMonitorHeight;
 
 
 INT WINAPI WinMain(HINSTANCE Instance, HINSTANCE PreviousInstance,
@@ -38,14 +44,15 @@ INT WINAPI WinMain(HINSTANCE Instance, HINSTANCE PreviousInstance,
         goto Exit;
     }
 
-    gDrawingSurface.Bitmapinfo.bmiHeader.biSize = sizeof(gDrawingSurface.Bitmapinfo.bmiHeader);
-    gDrawingSurface.Bitmapinfo.bmiHeader.biWidth = GAME_RES_WIDTH;
-    gDrawingSurface.Bitmapinfo.bmiHeader.biHeight = GAME_RES_HEIGHT;
-    gDrawingSurface.Bitmapinfo.bmiHeader.biBitCount = GAME_BPP;
-    gDrawingSurface.Bitmapinfo.bmiHeader.biCompression = BI_RGB;
-    gDrawingSurface.Bitmapinfo.bmiHeader.biPlanes = 1;
+    gBackBuffer.Bitmapinfo.bmiHeader.biSize = sizeof(gBackBuffer.Bitmapinfo.bmiHeader);
+    gBackBuffer.Bitmapinfo.bmiHeader.biWidth = GAME_RES_WIDTH;
+    gBackBuffer.Bitmapinfo.bmiHeader.biHeight = GAME_RES_HEIGHT;
+    gBackBuffer.Bitmapinfo.bmiHeader.biBitCount = GAME_BPP;
+    gBackBuffer.Bitmapinfo.bmiHeader.biCompression = BI_RGB;
+    gBackBuffer.Bitmapinfo.bmiHeader.biPlanes = 1;
 
-    if ((gDrawingSurface.Memory = VirtualAlloc(NULL, GAME_DRAWING_AREA_MEMORY_SIZE, MEM_RESERVE | MEM_COMMIT, PAGE_READWRITE) == NULL))
+    gBackBuffer.Memory = VirtualAlloc(NULL, GAME_DRAWING_AREA_MEMORY_SIZE, MEM_RESERVE | MEM_COMMIT, PAGE_READWRITE);
+    if (gBackBuffer.Memory == NULL)
     {
         MessageBoxA(NULL, "Faild to allocate memory for drawing surface!", "Error!", MB_ICONEXCLAMATION | MB_OK);
 
@@ -112,9 +119,11 @@ DWORD CreateMainGameWindow(void) {
     WindowClass.hIcon = LoadIconA(NULL, IDI_APPLICATION);
     WindowClass.hIconSm = LoadIconA(NULL, IDI_APPLICATION);
     WindowClass.hCursor = LoadCursorA(NULL, IDC_ARROW);
-    WindowClass.hbrBackground = (HBRUSH)(COLOR_WINDOW + 1);
+    WindowClass.hbrBackground = CreateSolidBrush(RGB(255, 0, 255)); // changing background color
     WindowClass.lpszMenuName = NULL;
     WindowClass.lpszClassName = GAME_NAME  "_WINDOWCLASS";
+
+    //SetProcessDpiAwarenessContext(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2);
 
     if (RegisterClassExA(&WindowClass) == 0)
     {
@@ -130,6 +139,30 @@ DWORD CreateMainGameWindow(void) {
         Result = GetLastError();
         MessageBoxA(NULL, "Window Creation Failed!", "Error!",
             MB_ICONEXCLAMATION | MB_OK);
+        goto Exit;
+    }
+
+    if (GetMonitorInfoA(MonitorFromWindow(gGameWindow, MONITOR_DEFAULTTOPRIMARY), &gMonitorInfo) == 0) 
+    {
+        Result = ERROR_MONITOR_NO_DESCRIPTOR;
+
+        goto Exit;
+    }
+
+    gMonitorWidth = gMonitorInfo.rcMonitor.right - gMonitorInfo.rcMonitor.left;
+    gMonitorHeight = gMonitorInfo.rcMonitor.bottom - gMonitorInfo.rcMonitor.top;
+
+    if (SetWindowLongPtrA(gGameWindow, GWL_STYLE, (WS_OVERLAPPEDWINDOW | WS_VISIBLE) & ~WS_OVERLAPPEDWINDOW) == 0)
+    {
+        Result = GetLastError();
+
+        goto Exit;
+    }// removing the title bar
+
+    if (SetWindowPos(gGameWindow, HWND_TOP, gMonitorInfo.rcMonitor.left, gMonitorInfo.rcMonitor.top, gMonitorWidth, gMonitorHeight, SWP_NOOWNERZORDER | SWP_FRAMECHANGED) == 0)
+    {
+        Result = GetLastError();
+
         goto Exit;
     }
 
@@ -151,7 +184,7 @@ BOOL GameIsAlreadyRunning(void) {
 
 void ProcessPlayerInput(void)
 {
-    short EscapeKeyIsDown = GetAsyncKeyState(VK_ESCAPE);
+    int16_t EscapeKeyIsDown = GetAsyncKeyState(VK_ESCAPE);
 
     if (EscapeKeyIsDown) 
     {
@@ -159,7 +192,24 @@ void ProcessPlayerInput(void)
     }
 }
 
-void RednerFrameGraphics(void) 
+void RednerFrameGraphics(void)
 {
-    
+    //memset(gBackBuffer.Memory, 0xFF, (GAME_RES_WIDTH * 4) * GAME_RES_HEIGHT);
+
+    PIXEL32 Pixel = { 0 };
+
+    Pixel.Blue = 0xff;
+    Pixel.Green = 0;
+    Pixel.Red = 0;
+    Pixel.Alpha = 0xFF;
+
+    for (int i = 0; i < (GAME_RES_HEIGHT * GAME_RES_WIDTH); i++) {
+        memcpy((PIXEL32*)gBackBuffer.Memory  + i, &Pixel, sizeof(PIXEL32));
+    }
+
+    HDC DeviceContext = GetDC(gGameWindow);
+
+    StretchDIBits(DeviceContext, 0, 0, gMonitorWidth, gMonitorHeight, 0, 0, GAME_RES_WIDTH, GAME_RES_HEIGHT, gBackBuffer.Memory, &gBackBuffer.Bitmapinfo, DIB_RGB_COLORS, SRCCOPY);
+
+    ReleaseDC(gGameWindow, DeviceContext);
 }
