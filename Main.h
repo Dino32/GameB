@@ -1,5 +1,9 @@
 #pragma once
 
+#pragma warning (disable: 4820)
+
+#pragma warning(disable: 5045)
+
 typedef struct GAMEBITMAP 
 {
 
@@ -17,6 +21,31 @@ typedef struct PIXEL32
 	uint8_t Alpha;
 
 } PIXEL32;
+
+typedef struct GAMEPERFDATA 
+{
+
+	uint64_t TotalFramesRednered;
+
+	uint32_t RawFramesPerSecondAverage;
+
+	uint32_t CoockedFramesPerSecondAverage;
+
+	LARGE_INTEGER Perffrequency;
+
+	LARGE_INTEGER FrameStart;
+
+	LARGE_INTEGER FrameEnd;
+
+	LARGE_INTEGER ElapsedMicrosecondsPerFrame;
+	
+	MONITORINFO MonitorInfo;
+
+	int32_t MonitorWidth;
+
+	int32_t MonitorHeight;
+
+} GAMEPERFDATA;
 
 INT __stdcall WinMain(HINSTANCE Instance, HINSTANCE PreviousInstance, PSTR CommandLine, INT CommandShow);
 
