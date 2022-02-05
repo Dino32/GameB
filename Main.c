@@ -17,6 +17,7 @@
 #define GAME_BPP 32
 #define GAME_DRAWING_AREA_MEMORY_SIZE (GAME_RES_WIDTH  * GAME_RES_HEIGHT * (GAME_BPP  / 8))
 #define CALCULATE_AVG_FPS_EVERY_X_FRAMES 100
+#define TARGET_MICROSECONDS_PER_FRAME 16667
 
 BOOL gGameIsRunning; // gloabal variable, its automatically initialized to zero (false)
 
@@ -34,6 +35,17 @@ INT WINAPI WinMain(HINSTANCE Instance, HINSTANCE PreviousInstance,
     UNREFERENCED_PARAMETER(CommandLine);
     UNREFERENCED_PARAMETER(Instance);
 
+    MSG Message = { 0 };
+
+    int64_t FrameStart = 0;
+
+    int64_t FrameEnd = 0;
+
+    int64_t ElapsedMicrosecondsPerFrameAccumulatorRaw = 0;
+
+    int64_t ElapsedMicrosecondsPerFrame;
+
+    int64_t ElapsedMicrosecondsPerFrameAccumutalorCoocked = 0;
 
     if (GameIsAlreadyRunning()) {
         MessageBoxA(NULL, "Another instance of this program is already running!", "Error!", MB_ICONEXCLAMATION | MB_OK);
@@ -44,7 +56,7 @@ INT WINAPI WinMain(HINSTANCE Instance, HINSTANCE PreviousInstance,
         goto Exit;
     }
 
-    QueryPerformanceFrequency(&gPerformanceData.Perffrequency);
+    QueryPerformanceFrequency((LARGE_INTEGER*) & gPerformanceData.Perffrequency);
 
     gBackBuffer.Bitmapinfo.bmiHeader.biSize = sizeof(gBackBuffer.Bitmapinfo.bmiHeader);
     gBackBuffer.Bitmapinfo.bmiHeader.biWidth = GAME_RES_WIDTH;
@@ -60,8 +72,6 @@ INT WINAPI WinMain(HINSTANCE Instance, HINSTANCE PreviousInstance,
 
         goto Exit;
     }
- 
-    MSG Message = { 0 };
 
     gGameIsRunning = TRUE;
 
@@ -69,7 +79,7 @@ INT WINAPI WinMain(HINSTANCE Instance, HINSTANCE PreviousInstance,
 
     while (gGameIsRunning)
     {
-        QueryPerformanceCounter(&gPerformanceData.FrameStart);
+        QueryPerformanceCounter((LARGE_INTEGER*)&FrameStart);
 
         while (PeekMessageA(&Message, gGameWindow, 0, 0, PM_REMOVE)) 
         {
@@ -80,24 +90,41 @@ INT WINAPI WinMain(HINSTANCE Instance, HINSTANCE PreviousInstance,
 
         RednerFrameGraphics();
 
-        QueryPerformanceCounter(&gPerformanceData.FrameEnd);
+        QueryPerformanceCounter((LARGE_INTEGER*)&FrameEnd);
 
-        gPerformanceData.ElapsedMicrosecondsPerFrame.QuadPart = gPerformanceData.FrameEnd.QuadPart - gPerformanceData.FrameStart.QuadPart;
+        ElapsedMicrosecondsPerFrame = FrameEnd - FrameStart;
 
-        gPerformanceData.ElapsedMicrosecondsPerFrame.QuadPart *= 1000000;
-        gPerformanceData.ElapsedMicrosecondsPerFrame.QuadPart /= gPerformanceData.Perffrequency.QuadPart;
-
-        Sleep(1);
+        ElapsedMicrosecondsPerFrame *= 1000000;
+        ElapsedMicrosecondsPerFrame /= gPerformanceData.Perffrequency;
 
         gPerformanceData.TotalFramesRednered++;
 
+        ElapsedMicrosecondsPerFrameAccumulatorRaw += ElapsedMicrosecondsPerFrame;
+
+        while (ElapsedMicrosecondsPerFrame < TARGET_MICROSECONDS_PER_FRAME) 
+        {
+            Sleep(0);
+
+            ElapsedMicrosecondsPerFrame = FrameEnd - FrameStart;
+
+            ElapsedMicrosecondsPerFrame *= 1000000;
+
+            ElapsedMicrosecondsPerFrame /= gPerformanceData.Perffrequency;
+        
+            QueryPerformanceCounter((LARGE_INTEGER*)&FrameEnd);
+        }
+
+        ElapsedMicrosecondsPerFrameAccumutalorCoocked += ElapsedMicrosecondsPerFrame;
+
+
         if ((gPerformanceData.TotalFramesRednered % CALCULATE_AVG_FPS_EVERY_X_FRAMES) == 0)
         {
-            char str[64] = { 0 };
+            gPerformanceData.RawFPSAverage = 1.f / ((ElapsedMicrosecondsPerFrameAccumulatorRaw / CALCULATE_AVG_FPS_EVERY_X_FRAMES) * 0.000001f);
 
-            _snprintf_s(str,    _countof(str), _TRUNCATE, "Elapsed mircoseconds: %lli\n", gPerformanceData.ElapsedMicrosecondsPerFrame.QuadPart);
+            gPerformanceData.CoockedFPSAverage = 1.f / ((ElapsedMicrosecondsPerFrameAccumutalorCoocked / CALCULATE_AVG_FPS_EVERY_X_FRAMES) * 0.000001f);
 
-            OutputDebugStringA(str);
+            ElapsedMicrosecondsPerFrameAccumulatorRaw = 0;
+            ElapsedMicrosecondsPerFrameAccumutalorCoocked = 0;
         }
 
     }
@@ -211,10 +238,21 @@ void ProcessPlayerInput(void)
 {
     int16_t EscapeKeyIsDown = GetAsyncKeyState(VK_ESCAPE);
 
+    int16_t DebugKeyIsDown = GetAsyncKeyState(VK_F1);
+
+    static int16_t DebugKeyWasDown;
+
     if (EscapeKeyIsDown) 
     {
         SendMessageA(gGameWindow, WM_CLOSE, 0, 0);
     }
+
+    if (DebugKeyIsDown && !DebugKeyWasDown) 
+    {
+        gPerformanceData.DisplayDegubInfo = !gPerformanceData.DisplayDegubInfo;
+    }
+
+    DebugKeyWasDown = DebugKeyIsDown;
 }
 
 void RednerFrameGraphics(void)
@@ -228,14 +266,44 @@ void RednerFrameGraphics(void)
     Pixel.Red = 0;
     Pixel.Alpha = 0xFF;
 
-    for (int i = 0; i < (GAME_RES_HEIGHT * GAME_RES_WIDTH); i++) 
+    for (int i = 0; i < (GAME_RES_HEIGHT * GAME_RES_WIDTH); i++)
     {
-        memcpy_s((PIXEL32*)gBackBuffer.Memory  + i, sizeof(PIXEL32), &Pixel, sizeof(PIXEL32));
+        memcpy_s((PIXEL32*)gBackBuffer.Memory + i, sizeof(PIXEL32), &Pixel, sizeof(PIXEL32));
+    }
+
+    int32_t ScreenX = 25;
+    int32_t ScreenY = 25;
+
+    int32_t StartingScreenPixel = ((GAME_RES_WIDTH * GAME_RES_HEIGHT) - GAME_RES_WIDTH) - \
+        (GAME_RES_WIDTH * ScreenY) + ScreenX;
+
+    for (int32_t y = 0; y < 16; y++) 
+    {
+        for (int32_t x = 0; x < 16; x++)
+        {
+            memset((PIXEL32*)gBackBuffer.Memory + StartingScreenPixel + x - (GAME_RES_WIDTH*y), 0xFF, sizeof(PIXEL32));
+        }
     }
 
     HDC DeviceContext = GetDC(gGameWindow);
 
     StretchDIBits(DeviceContext, 0, 0, gPerformanceData.MonitorWidth, gPerformanceData.MonitorHeight, 0, 0, GAME_RES_WIDTH, GAME_RES_HEIGHT, gBackBuffer.Memory, &gBackBuffer.Bitmapinfo, DIB_RGB_COLORS, SRCCOPY);
+
+    if (gPerformanceData.DisplayDegubInfo)
+    {
+        SelectObject(DeviceContext, (HFONT)GetStockObject(ANSI_FIXED_FONT));
+
+        char DebugTextBuffer[64] = { 0 };
+
+        sprintf_s(DebugTextBuffer, sizeof(DebugTextBuffer), "FPS Raw:    %.1f", gPerformanceData.RawFPSAverage); // _count of returns the number of characters, "places"
+
+        TextOutA(DeviceContext, 0, 0, DebugTextBuffer, (int)strlen(DebugTextBuffer));
+
+        sprintf_s(DebugTextBuffer, sizeof(DebugTextBuffer), "FPS Coocked: %.1f", gPerformanceData.CoockedFPSAverage); // _count of returns the number of characters, "places"
+
+        TextOutA(DeviceContext, 0, 12, DebugTextBuffer, (int)strlen(DebugTextBuffer));
+
+    }
 
     ReleaseDC(gGameWindow, DeviceContext);
 }

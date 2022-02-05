@@ -27,23 +27,19 @@ typedef struct GAMEPERFDATA
 
 	uint64_t TotalFramesRednered;
 
-	uint32_t RawFramesPerSecondAverage;
+	float RawFPSAverage;
 
-	uint32_t CoockedFramesPerSecondAverage;
+	float CoockedFPSAverage;
 
-	LARGE_INTEGER Perffrequency;
-
-	LARGE_INTEGER FrameStart;
-
-	LARGE_INTEGER FrameEnd;
-
-	LARGE_INTEGER ElapsedMicrosecondsPerFrame;
+	int64_t Perffrequency;
 	
 	MONITORINFO MonitorInfo;
 
 	int32_t MonitorWidth;
 
 	int32_t MonitorHeight;
+
+	BOOL DisplayDegubInfo;
 
 } GAMEPERFDATA;
 
