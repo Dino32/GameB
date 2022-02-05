@@ -8,6 +8,7 @@
 #pragma warning(pop)
 // its important that this is included after windows.h
 #include <stdint.h>
+#include <emmintrin.h>
 #include "Main.h"
 #pragma warning (disable: 4668)
 
@@ -18,6 +19,8 @@
 #define GAME_DRAWING_AREA_MEMORY_SIZE (GAME_RES_WIDTH  * GAME_RES_HEIGHT * (GAME_BPP  / 8))
 #define CALCULATE_AVG_FPS_EVERY_X_FRAMES 100
 #define TARGET_MICROSECONDS_PER_FRAME 16667
+#define SIMD
+
 
 BOOL gGameIsRunning; // gloabal variable, its automatically initialized to zero (false)
 
@@ -26,6 +29,8 @@ HWND gGameWindow;
 GAMEBITMAP gBackBuffer;
 
 GAMEPERFDATA gPerformanceData;
+
+PLAYER gPlayer;
 
 
 INT WINAPI WinMain(HINSTANCE Instance, HINSTANCE PreviousInstance,
@@ -47,6 +52,22 @@ INT WINAPI WinMain(HINSTANCE Instance, HINSTANCE PreviousInstance,
 
     int64_t ElapsedMicrosecondsPerFrameAccumutalorCoocked = 0;
 
+    HANDLE NtDllModuleHandle;
+
+    if ((NtDllModuleHandle = GetModuleHandleA("ntdll.dll")) == NULL)
+    {
+        MessageBoxA(NULL, "Couldn't load ntdll.dll", "Error!", MB_ICONEXCLAMATION | MB_OK);
+        goto Exit;
+    }
+
+    if ((NtQueryTimerResolution = (_NtQueryTimerResolution)GetProcAddress(NtDllModuleHandle, "NtQueryTimerResolution")) == NULL) 
+    {
+        MessageBoxA(NULL, "Couldn't find the NtQueryTimerResolution function in ntdll.dll", "Error!", MB_ICONEXCLAMATION | MB_OK);
+        goto Exit;
+    }
+
+    NtQueryTimerResolution(&gPerformanceData.MinimumTimerResolution, &gPerformanceData.MaximumTimerResolution, &gPerformanceData.CurrentTimerResolution);
+
     if (GameIsAlreadyRunning()) {
         MessageBoxA(NULL, "Another instance of this program is already running!", "Error!", MB_ICONEXCLAMATION | MB_OK);
         goto Exit;
@@ -57,6 +78,8 @@ INT WINAPI WinMain(HINSTANCE Instance, HINSTANCE PreviousInstance,
     }
 
     QueryPerformanceFrequency((LARGE_INTEGER*) & gPerformanceData.Perffrequency);
+
+    gPerformanceData.DisplayDegubInfo = TRUE;
 
     gBackBuffer.Bitmapinfo.bmiHeader.biSize = sizeof(gBackBuffer.Bitmapinfo.bmiHeader);
     gBackBuffer.Bitmapinfo.bmiHeader.biWidth = GAME_RES_WIDTH;
@@ -72,6 +95,10 @@ INT WINAPI WinMain(HINSTANCE Instance, HINSTANCE PreviousInstance,
 
         goto Exit;
     }
+
+    gPlayer.WorldPosX = 25;
+
+    gPlayer.WorldPosY = 25;
 
     gGameIsRunning = TRUE;
 
@@ -101,9 +128,8 @@ INT WINAPI WinMain(HINSTANCE Instance, HINSTANCE PreviousInstance,
 
         ElapsedMicrosecondsPerFrameAccumulatorRaw += ElapsedMicrosecondsPerFrame;
 
-        while (ElapsedMicrosecondsPerFrame < TARGET_MICROSECONDS_PER_FRAME) 
+        while (ElapsedMicrosecondsPerFrame <= TARGET_MICROSECONDS_PER_FRAME) 
         {
-            Sleep(0);
 
             ElapsedMicrosecondsPerFrame = FrameEnd - FrameStart;
 
@@ -112,6 +138,11 @@ INT WINAPI WinMain(HINSTANCE Instance, HINSTANCE PreviousInstance,
             ElapsedMicrosecondsPerFrame /= gPerformanceData.Perffrequency;
         
             QueryPerformanceCounter((LARGE_INTEGER*)&FrameEnd);
+        
+            if (ElapsedMicrosecondsPerFrame <= ((int64_t)TARGET_MICROSECONDS_PER_FRAME - (gPerformanceData.CurrentTimerResolution * 0.1f)))
+            {
+                Sleep(0);
+            }
         }
 
         ElapsedMicrosecondsPerFrameAccumutalorCoocked += ElapsedMicrosecondsPerFrame;
@@ -240,7 +271,23 @@ void ProcessPlayerInput(void)
 
     int16_t DebugKeyIsDown = GetAsyncKeyState(VK_F1);
 
+    int16_t LeftKeyIsDown = GetAsyncKeyState(VK_LEFT) | GetAsyncKeyState('A');
+
+    int16_t RightKeyIsDown = GetAsyncKeyState(VK_RIGHT) | GetAsyncKeyState('D');
+
+    int16_t UpKeyIsDown = GetAsyncKeyState(VK_UP) | GetAsyncKeyState("W");
+
+    int16_t DownKeyIsDown = GetAsyncKeyState(VK_DOWN) | GetAsyncKeyState("S");
+
     static int16_t DebugKeyWasDown;
+
+    static int16_t LeftKeyWasDown;
+
+    static int16_t RightKeyWasDown;
+
+    static int16_t UpKeyWasDown;
+
+    static int16_t DownKeyWasDown;
 
     if (EscapeKeyIsDown) 
     {
@@ -252,27 +299,64 @@ void ProcessPlayerInput(void)
         gPerformanceData.DisplayDegubInfo = !gPerformanceData.DisplayDegubInfo;
     }
 
+    if (LeftKeyIsDown) 
+    {
+        if (gPlayer.WorldPosX > 0) 
+        {
+            gPlayer.WorldPosX--;
+        }
+    }
+
+    if (RightKeyIsDown) 
+    {
+        if (gPlayer.WorldPosX < GAME_RES_WIDTH - 16) 
+        {
+            gPlayer.WorldPosX++;
+        }
+    }
+
+    if (UpKeyIsDown) 
+    {
+        if (gPlayer.WorldPosY > 0) 
+        {
+            gPlayer.WorldPosY--;
+        }
+    }
+
+    if (DownKeyIsDown)
+    {
+        if (gPlayer.WorldPosY < GAME_RES_HEIGHT - 16)
+        {
+            gPlayer.WorldPosY++;
+        }
+    }
+
     DebugKeyWasDown = DebugKeyIsDown;
+
+    LeftKeyWasDown = LeftKeyIsDown;
+
+    RightKeyWasDown = RightKeyIsDown;
+
+    UpKeyWasDown = UpKeyIsDown;
+
+    DownKeyWasDown = DownKeyIsDown;
 }
 
 void RednerFrameGraphics(void)
 {
     //memset(gBackBuffer.Memory, 0xFF, (GAME_RES_WIDTH * 4) * GAME_RES_HEIGHT);
 
-    PIXEL32 Pixel = { 0 };
+    __m128i QuadPixel = {0x7f, 0x00, 0x00, 0xff, 0x7f, 0x00, 0x00, 0xff, 0x7f, 0x00, 0x00, 0xff, 0x7f, 0x00, 0x00, 0xff };
 
-    Pixel.Blue = 0x7f;
-    Pixel.Green = 0;
-    Pixel.Red = 0;
-    Pixel.Alpha = 0xFF;
+#ifdef SIMD
+    ClearScreen(&QuadPixel);
+#else
+    PIXEL32 Pixel = { 0x7f, 0x00, 0x00, 0xff };
+    ClearScreen(&Pixel);
+#endif
 
-    for (int i = 0; i < (GAME_RES_HEIGHT * GAME_RES_WIDTH); i++)
-    {
-        memcpy_s((PIXEL32*)gBackBuffer.Memory + i, sizeof(PIXEL32), &Pixel, sizeof(PIXEL32));
-    }
-
-    int32_t ScreenX = 25;
-    int32_t ScreenY = 25;
+    int32_t ScreenX = gPlayer.WorldPosX;
+    int32_t ScreenY = gPlayer.WorldPosY;
 
     int32_t StartingScreenPixel = ((GAME_RES_WIDTH * GAME_RES_HEIGHT) - GAME_RES_WIDTH) - \
         (GAME_RES_WIDTH * ScreenY) + ScreenX;
@@ -295,15 +379,44 @@ void RednerFrameGraphics(void)
 
         char DebugTextBuffer[64] = { 0 };
 
-        sprintf_s(DebugTextBuffer, sizeof(DebugTextBuffer), "FPS Raw:    %.1f", gPerformanceData.RawFPSAverage); // _count of returns the number of characters, "places"
+        sprintf_s(DebugTextBuffer, sizeof(DebugTextBuffer), "FPS Raw:       %.1f", gPerformanceData.RawFPSAverage); // _count of returns the number of characters, "places"
 
         TextOutA(DeviceContext, 0, 0, DebugTextBuffer, (int)strlen(DebugTextBuffer));
 
-        sprintf_s(DebugTextBuffer, sizeof(DebugTextBuffer), "FPS Coocked: %.1f", gPerformanceData.CoockedFPSAverage); // _count of returns the number of characters, "places"
+        sprintf_s(DebugTextBuffer, sizeof(DebugTextBuffer), "FPS Coocked:    %.1f", gPerformanceData.CoockedFPSAverage); // _count of returns the number of characters, "places"
 
         TextOutA(DeviceContext, 0, 12, DebugTextBuffer, (int)strlen(DebugTextBuffer));
 
+        sprintf_s(DebugTextBuffer, sizeof(DebugTextBuffer), "Min Timer Resolution: %.1f", gPerformanceData.MinimumTimerResolution / 10000.f); // _count of returns the number of characters, "places"
+
+        TextOutA(DeviceContext, 0, 24, DebugTextBuffer, (int)strlen(DebugTextBuffer));
+
+        sprintf_s(DebugTextBuffer, sizeof(DebugTextBuffer), "Max Timer Resolution:  %.1f", gPerformanceData.MaximumTimerResolution / 10000.f); // _count of returns the number of characters, "places"
+
+        TextOutA(DeviceContext, 0, 36, DebugTextBuffer, (int)strlen(DebugTextBuffer));
+
+        sprintf_s(DebugTextBuffer, sizeof(DebugTextBuffer), "Cur Timer Resolution:  %.1f", gPerformanceData.CurrentTimerResolution / 10000.f); // _count of returns the number of characters, "places"
+
+        TextOutA(DeviceContext, 0, 48, DebugTextBuffer, (int)strlen(DebugTextBuffer));
     }
 
     ReleaseDC(gGameWindow, DeviceContext);
 }
+
+#ifdef SIMD
+void ClearScreen(_In_ __m128i* Color)
+{
+    for (int i = 0; i < (GAME_RES_HEIGHT * GAME_RES_WIDTH); i += 4)
+    {
+        _mm_store_si128((PIXEL32*)gBackBuffer.Memory + i, *Color);
+    }
+}
+#else 
+void ClearScreen(_In_ PIXEL32* Pixel)
+{
+    for (int i = 0; i < (GAME_RES_HEIGHT * GAME_RES_WIDTH); i++)
+    {
+        memcpy((PIXEL32*)gBackBuffer.Memory + i, Pixel, sizeof(PIXEL32));
+    }
+}
+#endif

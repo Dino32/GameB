@@ -4,6 +4,13 @@
 
 #pragma warning(disable: 5045)
 
+#define SIMD
+
+
+typedef LONG(NTAPI* _NtQueryTimerResolution) (OUT PULONG MinimumResolution, OUT PULONG MaximumResolution, OUT PULONG CurrentResolution);
+
+_NtQueryTimerResolution NtQueryTimerResolution;
+
 typedef struct GAMEBITMAP 
 {
 
@@ -41,7 +48,29 @@ typedef struct GAMEPERFDATA
 
 	BOOL DisplayDegubInfo;
 
+	LONG MinimumTimerResolution;
+	
+	LONG MaximumTimerResolution;
+	
+	LONG CurrentTimerResolution;
+
 } GAMEPERFDATA;
+
+typedef struct PLAYER
+{
+	int32_t WorldPosX;
+	
+	int32_t WorldPosY;
+
+	char Name[12];
+
+	int32_t HP;
+
+	int32_t Strength;
+
+	int32_t MP; // Magic Power
+
+} PLAYER;
 
 INT __stdcall WinMain(HINSTANCE Instance, HINSTANCE PreviousInstance, PSTR CommandLine, INT CommandShow);
 
@@ -54,3 +83,9 @@ BOOL GameIsAlreadyRunning(void);
 void ProcessPlayerInput(void);
 
 void RednerFrameGraphics(void);
+
+#ifdef SIMD
+void ClearScreen(_In_ __m128i* Color);
+#else
+void ClearScreen(_In_ PIXEL32* Pixel);
+#endif
