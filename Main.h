@@ -54,13 +54,27 @@ typedef struct GAMEPERFDATA
 	
 	LONG CurrentTimerResolution;
 
+	DWORD HandleCount;
+
+	PROCESS_MEMORY_COUNTERS_EX MemInfo;
+
+	uint16_t CPUCount;
+
+	SYSTEM_INFO SystemInfo;
+
+	int64_t PreviousSystemTime;
+
+	int64_t CurrentSystemTime;
+
+	double CPUPercent;
+
 } GAMEPERFDATA;
 
 typedef struct PLAYER
 {
-	int32_t WorldPosX;
+	int32_t ScreenPosX;
 	
-	int32_t WorldPosY;
+	int32_t ScreenPosY;
 
 	char Name[12];
 

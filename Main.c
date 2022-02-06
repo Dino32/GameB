@@ -5,10 +5,13 @@
 // disable all warnings appliead to windows.h
 #include <windows.h>
 // pop out current level of warning (from  to level 4)
+
+#include <Psapi.h>
 #pragma warning(pop)
 // its important that this is included after windows.h
 #include <stdint.h>
 #include <emmintrin.h>
+#pragma comment(lib, "Winmm.lib")
 #include "Main.h"
 #pragma warning (disable: 4668)
 
@@ -17,8 +20,8 @@
 #define GAME_RES_HEIGHT   240
 #define GAME_BPP 32
 #define GAME_DRAWING_AREA_MEMORY_SIZE (GAME_RES_WIDTH  * GAME_RES_HEIGHT * (GAME_BPP  / 8))
-#define CALCULATE_AVG_FPS_EVERY_X_FRAMES 100
-#define TARGET_MICROSECONDS_PER_FRAME 16667
+#define CALCULATE_AVG_FPS_EVERY_X_FRAMES 120
+#define TARGET_MICROSECONDS_PER_FRAME 16667ULL
 #define SIMD
 
 
@@ -31,6 +34,8 @@ GAMEBITMAP gBackBuffer;
 GAMEPERFDATA gPerformanceData;
 
 PLAYER gPlayer;
+
+BOOL gWindowHasFocus;
 
 
 INT WINAPI WinMain(HINSTANCE Instance, HINSTANCE PreviousInstance,
@@ -48,11 +53,25 @@ INT WINAPI WinMain(HINSTANCE Instance, HINSTANCE PreviousInstance,
 
     int64_t ElapsedMicrosecondsPerFrameAccumulatorRaw = 0;
 
-    int64_t ElapsedMicrosecondsPerFrame;
+    int64_t ElapsedMicrosecondsPerFrame = 0;
 
     int64_t ElapsedMicrosecondsPerFrameAccumutalorCoocked = 0;
 
-    HANDLE NtDllModuleHandle;
+    HANDLE NtDllModuleHandle = NULL;
+
+    FILETIME ProcessCreationTime = { 0 };
+
+    FILETIME ProcessExitTime = { 0 };
+
+    int64_t CurrentUserCPUTime = 0;
+
+    int64_t CurrentKernelCPUTime = 0;
+
+    int64_t PresviousUserCPUTime = 0;
+
+    int64_t PreviousKernelCPUTime = 0;
+
+    HANDLE ProcessHandle = GetCurrentProcess();
 
     if ((NtDllModuleHandle = GetModuleHandleA("ntdll.dll")) == NULL)
     {
@@ -67,9 +86,36 @@ INT WINAPI WinMain(HINSTANCE Instance, HINSTANCE PreviousInstance,
     }
 
     NtQueryTimerResolution(&gPerformanceData.MinimumTimerResolution, &gPerformanceData.MaximumTimerResolution, &gPerformanceData.CurrentTimerResolution);
+    
+    GetSystemInfo(&gPerformanceData.SystemInfo);
+
+    GetSystemTimeAsFileTime((FILETIME*)&gPerformanceData.PreviousSystemTime);
+
 
     if (GameIsAlreadyRunning()) {
         MessageBoxA(NULL, "Another instance of this program is already running!", "Error!", MB_ICONEXCLAMATION | MB_OK);
+        goto Exit;
+    }
+
+    if (timeBeginPeriod(1) == TIMERR_NOCANDO) 
+    {
+        MessageBoxA(NULL, "Failed to set global timer reoslution!", "Error!", MB_ICONEXCLAMATION | MB_OK);
+
+        goto Exit;
+    }
+
+    if (SetPriorityClass(ProcessHandle, HIGH_PRIORITY_CLASS) == 0) 
+    {
+        MessageBoxA(NULL, "Failed to set process priority!", "Error!", MB_ICONEXCLAMATION | MB_OK);
+
+        goto Exit;
+    }
+
+    if (SetThreadPriority(GetCurrentThread(), THREAD_PRIORITY_HIGHEST) == 0)
+    {
+        MessageBoxA(NULL, "Failed to set thread priority!", "Error!", MB_ICONEXCLAMATION | MB_OK);
+
+
         goto Exit;
     }
 
@@ -96,9 +142,9 @@ INT WINAPI WinMain(HINSTANCE Instance, HINSTANCE PreviousInstance,
         goto Exit;
     }
 
-    gPlayer.WorldPosX = 25;
+    gPlayer.ScreenPosX = 25;
 
-    gPlayer.WorldPosY = 25;
+    gPlayer.ScreenPosY = 25;
 
     gGameIsRunning = TRUE;
 
@@ -128,7 +174,7 @@ INT WINAPI WinMain(HINSTANCE Instance, HINSTANCE PreviousInstance,
 
         ElapsedMicrosecondsPerFrameAccumulatorRaw += ElapsedMicrosecondsPerFrame;
 
-        while (ElapsedMicrosecondsPerFrame <= TARGET_MICROSECONDS_PER_FRAME) 
+        while (ElapsedMicrosecondsPerFrame < TARGET_MICROSECONDS_PER_FRAME) 
         {
 
             ElapsedMicrosecondsPerFrame = FrameEnd - FrameStart;
@@ -139,9 +185,9 @@ INT WINAPI WinMain(HINSTANCE Instance, HINSTANCE PreviousInstance,
         
             QueryPerformanceCounter((LARGE_INTEGER*)&FrameEnd);
         
-            if (ElapsedMicrosecondsPerFrame <= ((int64_t)TARGET_MICROSECONDS_PER_FRAME - (gPerformanceData.CurrentTimerResolution * 0.1f)))
+            if (ElapsedMicrosecondsPerFrame < TARGET_MICROSECONDS_PER_FRAME *0.75)
             {
-                Sleep(0);
+                Sleep(1);
             }
         }
 
@@ -150,12 +196,32 @@ INT WINAPI WinMain(HINSTANCE Instance, HINSTANCE PreviousInstance,
 
         if ((gPerformanceData.TotalFramesRednered % CALCULATE_AVG_FPS_EVERY_X_FRAMES) == 0)
         {
+            GetSystemTimeAsFileTime((FILETIME*)&gPerformanceData.CurrentSystemTime);
+
+            GetProcessTimes(ProcessHandle, &ProcessCreationTime, &ProcessExitTime, (FILETIME*)&CurrentKernelCPUTime, (FILETIME*)&CurrentUserCPUTime);
+
+            gPerformanceData.CPUPercent = (CurrentKernelCPUTime - PreviousKernelCPUTime) + (CurrentUserCPUTime - PresviousUserCPUTime);
+
+            gPerformanceData.CPUPercent /= (gPerformanceData.CurrentSystemTime - gPerformanceData.PreviousSystemTime);
+
+            gPerformanceData.CPUPercent /= gPerformanceData.SystemInfo.dwNumberOfProcessors;
+
+            gPerformanceData.CPUPercent *= 100;
+
+            GetProcessHandleCount(ProcessHandle, &gPerformanceData.HandleCount);
+            
+            K32GetProcessMemoryInfo(ProcessHandle, (PROCESS_MEMORY_COUNTERS*)&gPerformanceData.MemInfo, sizeof(gPerformanceData.MemInfo));
+
             gPerformanceData.RawFPSAverage = 1.f / ((ElapsedMicrosecondsPerFrameAccumulatorRaw / CALCULATE_AVG_FPS_EVERY_X_FRAMES) * 0.000001f);
 
             gPerformanceData.CoockedFPSAverage = 1.f / ((ElapsedMicrosecondsPerFrameAccumutalorCoocked / CALCULATE_AVG_FPS_EVERY_X_FRAMES) * 0.000001f);
 
             ElapsedMicrosecondsPerFrameAccumulatorRaw = 0;
             ElapsedMicrosecondsPerFrameAccumutalorCoocked = 0;
+
+            PreviousKernelCPUTime = CurrentKernelCPUTime;
+            PresviousUserCPUTime = CurrentUserCPUTime;
+            gPerformanceData.PreviousSystemTime = gPerformanceData.CurrentSystemTime;
         }
 
     }
@@ -176,6 +242,27 @@ LRESULT CALLBACK MainWndowProc(_In_ HWND WindowHandle, _In_ UINT Message, _In_ W
 
             break;
         }
+
+        case WM_ACTIVATE:
+        {
+            ShowCursor(FALSE);
+
+            if (wParam == 0)
+            {
+                // Our Window has lost focus
+
+                gWindowHasFocus = FALSE;
+            }
+            else 
+            {
+                // Our window has gained focus
+
+                gWindowHasFocus = TRUE;
+            }
+
+            break;
+        }
+
         default: 
         {
             Result = DefWindowProcA(WindowHandle, Message, wParam, lParam);
@@ -267,6 +354,11 @@ BOOL GameIsAlreadyRunning(void) {
 
 void ProcessPlayerInput(void)
 {
+    if (gWindowHasFocus == FALSE)
+    {
+        return;
+    }
+
     int16_t EscapeKeyIsDown = GetAsyncKeyState(VK_ESCAPE);
 
     int16_t DebugKeyIsDown = GetAsyncKeyState(VK_F1);
@@ -275,9 +367,9 @@ void ProcessPlayerInput(void)
 
     int16_t RightKeyIsDown = GetAsyncKeyState(VK_RIGHT) | GetAsyncKeyState('D');
 
-    int16_t UpKeyIsDown = GetAsyncKeyState(VK_UP) | GetAsyncKeyState("W");
+    int16_t UpKeyIsDown = GetAsyncKeyState('W') | GetAsyncKeyState(VK_UP);
 
-    int16_t DownKeyIsDown = GetAsyncKeyState(VK_DOWN) | GetAsyncKeyState("S");
+    int16_t DownKeyIsDown = GetAsyncKeyState(VK_DOWN) | GetAsyncKeyState('S');
 
     static int16_t DebugKeyWasDown;
 
@@ -301,33 +393,33 @@ void ProcessPlayerInput(void)
 
     if (LeftKeyIsDown) 
     {
-        if (gPlayer.WorldPosX > 0) 
+        if (gPlayer.ScreenPosX > 0) 
         {
-            gPlayer.WorldPosX--;
+            gPlayer.ScreenPosX--;
         }
     }
 
     if (RightKeyIsDown) 
     {
-        if (gPlayer.WorldPosX < GAME_RES_WIDTH - 16) 
+        if (gPlayer.ScreenPosX < GAME_RES_WIDTH - 16)
         {
-            gPlayer.WorldPosX++;
+            gPlayer.ScreenPosX++;
         }
     }
 
     if (UpKeyIsDown) 
     {
-        if (gPlayer.WorldPosY > 0) 
+        if (gPlayer.ScreenPosY > 0) 
         {
-            gPlayer.WorldPosY--;
+            gPlayer.ScreenPosY--;
         }
     }
 
     if (DownKeyIsDown)
     {
-        if (gPlayer.WorldPosY < GAME_RES_HEIGHT - 16)
+        if (gPlayer.ScreenPosY < GAME_RES_HEIGHT - 16)
         {
-            gPlayer.WorldPosY++;
+            gPlayer.ScreenPosY++;
         }
     }
 
@@ -355,8 +447,8 @@ void RednerFrameGraphics(void)
     ClearScreen(&Pixel);
 #endif
 
-    int32_t ScreenX = gPlayer.WorldPosX;
-    int32_t ScreenY = gPlayer.WorldPosY;
+    int32_t ScreenX = gPlayer.ScreenPosX;
+    int32_t ScreenY = gPlayer.ScreenPosY;
 
     int32_t StartingScreenPixel = ((GAME_RES_WIDTH * GAME_RES_HEIGHT) - GAME_RES_WIDTH) - \
         (GAME_RES_WIDTH * ScreenY) + ScreenX;
@@ -398,6 +490,18 @@ void RednerFrameGraphics(void)
         sprintf_s(DebugTextBuffer, sizeof(DebugTextBuffer), "Cur Timer Resolution:  %.1f", gPerformanceData.CurrentTimerResolution / 10000.f); // _count of returns the number of characters, "places"
 
         TextOutA(DeviceContext, 0, 48, DebugTextBuffer, (int)strlen(DebugTextBuffer));
+    
+        sprintf_s(DebugTextBuffer, sizeof(DebugTextBuffer),"Handles: %lu", gPerformanceData.HandleCount); // _count of returns the number of characters, "places"
+   
+        TextOutA(DeviceContext, 0, 60, DebugTextBuffer, (int)strlen(DebugTextBuffer));
+    
+        sprintf_s(DebugTextBuffer, sizeof(DebugTextBuffer), "Memory: %lu KB", gPerformanceData.MemInfo.PrivateUsage / 1024); // _count of returns the number of characters, "places"
+
+        TextOutA(DeviceContext, 0, 72, DebugTextBuffer, (int)strlen(DebugTextBuffer));
+    
+        sprintf_s(DebugTextBuffer, sizeof(DebugTextBuffer), "CPU: %.3f %%", gPerformanceData.CPUPercent); // _count of returns the number of characters, "places"
+
+        TextOutA(DeviceContext, 0, 84, DebugTextBuffer, (int)strlen(DebugTextBuffer));
     }
 
     ReleaseDC(gGameWindow, DeviceContext);
