@@ -6,6 +6,46 @@
 
 #define SIMD
 
+#define SUIT_0 0
+
+#define SUIT_1 1
+
+#define SUIT_2 2
+
+#define FACING_DOWN_0 0
+
+#define FACING_DOWN_1 1
+
+#define FACING_DOWN_2 2
+
+#define FACING_LEFT_0 3
+
+#define FACING_LEFT_1 4
+
+#define FACING_LEFT_2 5
+
+#define FACING_RIGHT_0 6
+
+#define FACING_RIGHT_1 7
+
+#define FACING_RIGHT_2 8
+
+#define FACING_UPWARD_0 9
+
+#define FACING_UPWARD_1 10
+
+#define FACING_UPWARD_2 11
+
+
+
+#define DIRECTION_DOWN 0
+
+#define DIRECTION_LEFT 3
+
+#define DIRECTION_RIGTH 6
+
+#define DIRECTION_UP 9
+
 
 typedef LONG(NTAPI* _NtQueryTimerResolution) (OUT PULONG MinimumResolution, OUT PULONG MaximumResolution, OUT PULONG CurrentResolution);
 
@@ -70,13 +110,23 @@ typedef struct GAMEPERFDATA
 
 } GAMEPERFDATA;
 
-typedef struct PLAYER
+typedef struct HERO
 {
 	int32_t ScreenPosX;
 	
 	int32_t ScreenPosY;
 
+	uint8_t MovementRemaining;
+
+	uint8_t Direction;
+
+	uint8_t CurrentArmor;
+
+	uint8_t SpriteIndex;
+
 	char Name[12];
+
+	GAMEBITMAP Sprite[3][12];
 
 	int32_t HP;
 
@@ -84,7 +134,7 @@ typedef struct PLAYER
 
 	int32_t MP; // Magic Power
 
-} PLAYER;
+} HERO;
 
 INT __stdcall WinMain(HINSTANCE Instance, HINSTANCE PreviousInstance, PSTR CommandLine, INT CommandShow);
 
@@ -97,6 +147,12 @@ BOOL GameIsAlreadyRunning(void);
 void ProcessPlayerInput(void);
 
 void RednerFrameGraphics(void);
+
+DWORD Load32BppBitmapFromFile(_In_ char* FileName, _Inout_ GAMEBITMAP* GameBitmap);
+
+DWORD InitializeHero(void);
+
+void Blit32BppBitmapToBuffer(_In_ GAMEBITMAP* GameBitmap, _In_ uint16_t x, _In_ uint16_t y);
 
 #ifdef SIMD
 void ClearScreen(_In_ __m128i* Color);
