@@ -39,6 +39,8 @@ BOOL gWindowHasFocus;
 
 GAMEBITMAP g6x7Font;
 
+REGISTRYPARAMS gRegistryParams;
+
 
 INT WINAPI WinMain(HINSTANCE Instance, HINSTANCE PreviousInstance,
     PSTR CommandLine, INT CommandShow) {
@@ -75,15 +77,30 @@ INT WINAPI WinMain(HINSTANCE Instance, HINSTANCE PreviousInstance,
 
     HANDLE ProcessHandle = GetCurrentProcess();
 
+    if (LoadRegistryParameters() != ERROR_SUCCESS)
+    {
+        goto Exit;
+    }
+    
+    LogMessageA(Informational, "[%s], Informational", __FUNCTION__);
+    
+    LogMessageA(Warning, "[%s] Warning", __FUNCTION__);
+
+    LogMessageA(Error, "[%s], Error", __FUNCTION__);
+
+    LogMessageA(Debug, "[%s] Debug", __FUNCTION__);
+
     if ((NtDllModuleHandle = GetModuleHandleA("ntdll.dll")) == NULL)
     {
-        MessageBoxA(NULL, "Couldn't load ntdll.dll", "Error!", MB_ICONEXCLAMATION | MB_OK);
+        LogMessageA(Error, "[%s] Couldn't load ntdll.dll! Error 0x%08lx!", __FUNCTION__, GetLastError());
+        MessageBoxA(NULL, "Couldn't load ntdll.dll", "Error!", MB_ICONERROR | MB_OK);
         goto Exit;
     }
 
     if ((NtQueryTimerResolution = (_NtQueryTimerResolution)GetProcAddress(NtDllModuleHandle, "NtQueryTimerResolution")) == NULL) 
     {
-        MessageBoxA(NULL, "Couldn't find the NtQueryTimerResolution function in ntdll.dll", "Error!", MB_ICONEXCLAMATION | MB_OK);
+        LogMessageA(Error, "[%s] Couldn't find the NtQueryTimerResolution function in ntdll.dll! GetProcAddres failed! Error 0x%08lx", __FUNCTION__, GetLastError());
+        MessageBoxA(NULL, "Couldn't find the NtQueryTimerResolution function in ntdll.dll", "Error!", MB_ICONERROR | MB_OK);
         goto Exit;
     }
 
@@ -95,39 +112,49 @@ INT WINAPI WinMain(HINSTANCE Instance, HINSTANCE PreviousInstance,
 
 
     if (GameIsAlreadyRunning()) {
+        LogMessageA(Error, "[%s] Another instance of this program is already running!", __FUNCTION__);
         MessageBoxA(NULL, "Another instance of this program is already running!", "Error!", MB_ICONEXCLAMATION | MB_OK);
         goto Exit;
     }
 
     if (timeBeginPeriod(1) == TIMERR_NOCANDO) 
     {
-        MessageBoxA(NULL, "Failed to set global timer reoslution!", "Error!", MB_ICONEXCLAMATION | MB_OK);
+        LogMessageA(Error, "[%s] Failed to set global timer reoslution!", __FUNCTION__);
+
+        MessageBoxA(NULL, "Failed to set global timer reoslution!", "Error!", MB_ICONERROR | MB_OK);
 
         goto Exit;
     }
 
     if (SetPriorityClass(ProcessHandle, HIGH_PRIORITY_CLASS) == 0) 
     {
-        MessageBoxA(NULL, "Failed to set process priority!", "Error!", MB_ICONEXCLAMATION | MB_OK);
+        LogMessageA(Error, "[%s] Failed to set process priority! Error 0x%08lx", __FUNCTION__, GetLastError());
+
+        MessageBoxA(NULL, "Failed to set process priority!", "Error!", MB_ICONERROR | MB_OK);
 
         goto Exit;
     }
 
     if (SetThreadPriority(GetCurrentThread(), THREAD_PRIORITY_HIGHEST) == 0)
     {
-        MessageBoxA(NULL, "Failed to set thread priority!", "Error!", MB_ICONEXCLAMATION | MB_OK);
+        LogMessageA(Error, "[%s] Failed to set thread priority! Error 0x%08lx", __FUNCTION__, GetLastError());
 
+        MessageBoxA(NULL, "Failed to set thread priority!", "Error!", MB_ICONERROR | MB_OK);
 
         goto Exit;
     }
 
     if (CreateMainGameWindow() != ERROR_SUCCESS) {
+        LogMessageA(Error, "[%s] CreateMainGameWindow Failed!", __FUNCTION__);
+
         goto Exit;
     }
 
     if ((Load32BppBitmapFromFile(".\\Assets\\6x7Font.bmpx", &g6x7Font)) != ERROR_SUCCESS)
     {
-        MessageBoxA(NULL, "Load32BppBitmapFromFile failed!", "Error!", MB_ICONEXCLAMATION | MB_OK);
+        LogMessageA(Error, "[%s] Load32BppBitmapFromFile failed!", __FUNCTION__);
+
+        MessageBoxA(NULL, "Load32BppBitmapFromFile failed!", "Error!", MB_ICONERROR | MB_OK);
 
         goto Exit;
     }
@@ -146,14 +173,18 @@ INT WINAPI WinMain(HINSTANCE Instance, HINSTANCE PreviousInstance,
     gBackBuffer.Memory = VirtualAlloc(NULL, GAME_DRAWING_AREA_MEMORY_SIZE, MEM_RESERVE | MEM_COMMIT, PAGE_READWRITE);
     if (gBackBuffer.Memory == NULL)
     {
-        MessageBoxA(NULL, "Faild to allocate memory for drawing surface!", "Error!", MB_ICONEXCLAMATION | MB_OK);
+        LogMessageA(Error, "[%s] Faild to allocate memory for drawing surface! Error 0x%08lx", __FUNCTION__, GetLastError());
+
+        MessageBoxA(NULL, "Faild to allocate memory for drawing surface!", "Error!", MB_ICONERROR | MB_OK);
 
         goto Exit;
     }
 
     if (InitializeHero() != ERROR_SUCCESS)
     {
-        MessageBoxA(NULL, "Faild to initialize hero!", "Error!", MB_ICONEXCLAMATION | MB_OK);
+        LogMessageA(Error, "[%s] Faild to initialize hero!" __FUNCTION__);
+
+        MessageBoxA(NULL, "Faild to initialize hero!", "Error!", MB_ICONERROR | MB_OK);
 
         goto Exit;
     }
@@ -308,6 +339,7 @@ DWORD CreateMainGameWindow(void) {
     if (RegisterClassExA(&WindowClass) == 0)
     {
         Result = GetLastError();
+        LogMessageA(Error, "[%s] RegisterClassExA failed! Error 0x%08lx", __FUNCTION__, GetLastError());
         MessageBoxA(NULL, "Window Registration Failed!", "Error!",MB_ICONEXCLAMATION | MB_OK);
         goto Exit;
     }
@@ -317,6 +349,7 @@ DWORD CreateMainGameWindow(void) {
     if (gGameWindow == NULL)
     {
         Result = GetLastError();
+        LogMessageA(Error, "[%s] CreateWindowEx failed! Error 0x%08lx", __FUNCTION__, GetLastError());
         MessageBoxA(NULL, "Window Creation Failed!", "Error!",
             MB_ICONEXCLAMATION | MB_OK);
         goto Exit;
@@ -326,6 +359,8 @@ DWORD CreateMainGameWindow(void) {
 
     if (GetMonitorInfoA(MonitorFromWindow(gGameWindow, MONITOR_DEFAULTTOPRIMARY), &gPerformanceData.MonitorInfo) == 0) 
     {
+        LogMessageA(Error, "[%s] GetMonitorInfoA(MonitorFromWindow()) failed! Error 0x%08lx", __FUNCTION__, GetLastError());
+
         Result = ERROR_MONITOR_NO_DESCRIPTOR;
 
         goto Exit;
@@ -336,6 +371,8 @@ DWORD CreateMainGameWindow(void) {
 
     if (SetWindowLongPtrA(gGameWindow, GWL_STYLE, (WS_OVERLAPPEDWINDOW | WS_VISIBLE) & ~WS_OVERLAPPEDWINDOW) == 0)
     {
+        LogMessageA(Error, "[%s] SetWindowPtrA() failed! Error 0x%08lx", __FUNCTION__, GetLastError());
+
         Result = GetLastError();
 
         goto Exit;
@@ -343,6 +380,8 @@ DWORD CreateMainGameWindow(void) {
 
     if (SetWindowPos(gGameWindow, HWND_TOP, gPerformanceData.MonitorInfo.rcMonitor.left, gPerformanceData.MonitorInfo.rcMonitor.top, gPerformanceData.MonitorWidth, gPerformanceData.MonitorHeight, SWP_NOOWNERZORDER | SWP_FRAMECHANGED) == 0)
     {
+        LogMessageA(Error, "[%s] SetWindowPos() failed! Error 0x%08lx", __FUNCTION__, GetLastError());
+
         Result = GetLastError();
 
         goto Exit;
@@ -723,7 +762,7 @@ void Blit32BppBitmapToBuffer(_In_ GAMEBITMAP* GameBitmap, _In_ uint16_t x, _In_ 
 
     PIXEL32 BitmapPixel = { 0 };
 
-    PIXEL32 BackgroundPixel = { 0 };
+    //PIXEL32 BackgroundPixel = { 0 };
 
     for (int16_t YPixel = 0; YPixel < (GameBitmap->Bitmapinfo.bmiHeader.biHeight); YPixel++)
     {
@@ -743,15 +782,15 @@ void Blit32BppBitmapToBuffer(_In_ GAMEBITMAP* GameBitmap, _In_ uint16_t x, _In_ 
     }
 }
 
-void BlitStringToBuffer(_In_ char* String, _In_ GAMEBITMAP* GameBitmap, _In_ uint16_t x, _In_ uint16_t y)
+void BlitStringToBuffer(_In_ char* String, _In_ GAMEBITMAP* FontSheet, _In_ PIXEL32 Color, _In_ uint16_t x, _In_ uint16_t y)
 {
-    int CharWidth = GameBitmap->Bitmapinfo.bmiHeader.biWidth / FONT_SHEET_CHARACTERS_PER_ROW;
+    uint16_t CharWidth = (uint16_t)FontSheet->Bitmapinfo.bmiHeader.biWidth / FONT_SHEET_CHARACTERS_PER_ROW;
 
-    int CharHeight = GameBitmap->Bitmapinfo.bmiHeader.biHeight;
+    uint16_t CharHeight = (uint16_t)FontSheet->Bitmapinfo.bmiHeader.biHeight;
 
-    int BytesPerCharacter = CharWidth * CharHeight * (GameBitmap->Bitmapinfo.bmiHeader.biBitCount / 8);
+    uint16_t BytesPerCharacter = CharWidth * CharHeight * (FontSheet->Bitmapinfo.bmiHeader.biBitCount / 8);
 
-    int StringLength = strlen(String);
+    uint16_t StringLength = strlen(String);
 
     GAMEBITMAP StringBitmap = { 0 };
 
@@ -769,664 +808,664 @@ void BlitStringToBuffer(_In_ char* String, _In_ GAMEBITMAP* GameBitmap, _In_ uin
 
     for (int Character = 0; Character < StringLength; Character++)
     {
-        int StartingFontSheetByte = 0;
+        int StartingFontSheetPixel = 0;
 
         int FontSheetOffset = 0;
 
         int StringBitmapOffset = 0;
     
         PIXEL32 FontSheetPixel = { 0 };
-
+        
         switch (String[Character])
         {
             case 'A':
             {
-                StartingFontSheetByte = (GameBitmap->Bitmapinfo.bmiHeader.biWidth * GameBitmap->Bitmapinfo.bmiHeader.biHeight) - GameBitmap->Bitmapinfo.bmiHeader.biWidth;
-                
+                StartingFontSheetPixel = (FontSheet->Bitmapinfo.bmiHeader.biWidth * FontSheet->Bitmapinfo.bmiHeader.biHeight) - FontSheet->Bitmapinfo.bmiHeader.biWidth;
+
                 break;
             }
             case 'B':
             {
-                StartingFontSheetByte = (GameBitmap->Bitmapinfo.bmiHeader.biWidth * GameBitmap->Bitmapinfo.bmiHeader.biHeight) - GameBitmap->Bitmapinfo.bmiHeader.biWidth + CharWidth;
+                StartingFontSheetPixel = (FontSheet->Bitmapinfo.bmiHeader.biWidth * FontSheet->Bitmapinfo.bmiHeader.biHeight) - FontSheet->Bitmapinfo.bmiHeader.biWidth + CharWidth;
 
                 break;
             }
             case 'C':
             {
-                StartingFontSheetByte = (GameBitmap->Bitmapinfo.bmiHeader.biWidth * GameBitmap->Bitmapinfo.bmiHeader.biHeight) - GameBitmap->Bitmapinfo.bmiHeader.biWidth + 2*CharWidth;
-            
+                StartingFontSheetPixel = (FontSheet->Bitmapinfo.bmiHeader.biWidth * FontSheet->Bitmapinfo.bmiHeader.biHeight) - FontSheet->Bitmapinfo.bmiHeader.biWidth + 2 * CharWidth;
+
                 break;
             }
             case 'D':
             {
-                StartingFontSheetByte = (GameBitmap->Bitmapinfo.bmiHeader.biWidth * GameBitmap->Bitmapinfo.bmiHeader.biHeight) - GameBitmap->Bitmapinfo.bmiHeader.biWidth + 3 * CharWidth;
+                StartingFontSheetPixel = (FontSheet->Bitmapinfo.bmiHeader.biWidth * FontSheet->Bitmapinfo.bmiHeader.biHeight) - FontSheet->Bitmapinfo.bmiHeader.biWidth + 3 * CharWidth;
 
                 break;
             }
 
             case 'E':
             {
-                StartingFontSheetByte = (GameBitmap->Bitmapinfo.bmiHeader.biWidth * GameBitmap->Bitmapinfo.bmiHeader.biHeight) - GameBitmap->Bitmapinfo.bmiHeader.biWidth + 4 * CharWidth;
+                StartingFontSheetPixel = (FontSheet->Bitmapinfo.bmiHeader.biWidth * FontSheet->Bitmapinfo.bmiHeader.biHeight) - FontSheet->Bitmapinfo.bmiHeader.biWidth + 4 * CharWidth;
 
                 break;
             }
 
             case 'F':
             {
-                StartingFontSheetByte = (GameBitmap->Bitmapinfo.bmiHeader.biWidth * GameBitmap->Bitmapinfo.bmiHeader.biHeight) - GameBitmap->Bitmapinfo.bmiHeader.biWidth + 5 * CharWidth;
+                StartingFontSheetPixel = (FontSheet->Bitmapinfo.bmiHeader.biWidth * FontSheet->Bitmapinfo.bmiHeader.biHeight) - FontSheet->Bitmapinfo.bmiHeader.biWidth + 5 * CharWidth;
 
                 break;
             }
 
             case 'G':
             {
-                StartingFontSheetByte = (GameBitmap->Bitmapinfo.bmiHeader.biWidth * GameBitmap->Bitmapinfo.bmiHeader.biHeight) - GameBitmap->Bitmapinfo.bmiHeader.biWidth + 6 * CharWidth;
+                StartingFontSheetPixel = (FontSheet->Bitmapinfo.bmiHeader.biWidth * FontSheet->Bitmapinfo.bmiHeader.biHeight) - FontSheet->Bitmapinfo.bmiHeader.biWidth + 6 * CharWidth;
 
                 break;
             }
 
             case 'H':
             {
-                StartingFontSheetByte = (GameBitmap->Bitmapinfo.bmiHeader.biWidth * GameBitmap->Bitmapinfo.bmiHeader.biHeight) - GameBitmap->Bitmapinfo.bmiHeader.biWidth + 7 * CharWidth;
+                StartingFontSheetPixel = (FontSheet->Bitmapinfo.bmiHeader.biWidth * FontSheet->Bitmapinfo.bmiHeader.biHeight) - FontSheet->Bitmapinfo.bmiHeader.biWidth + 7 * CharWidth;
 
                 break;
             }
 
             case 'I':
             {
-                StartingFontSheetByte = (GameBitmap->Bitmapinfo.bmiHeader.biWidth * GameBitmap->Bitmapinfo.bmiHeader.biHeight) - GameBitmap->Bitmapinfo.bmiHeader.biWidth + 8 * CharWidth;
+                StartingFontSheetPixel = (FontSheet->Bitmapinfo.bmiHeader.biWidth * FontSheet->Bitmapinfo.bmiHeader.biHeight) - FontSheet->Bitmapinfo.bmiHeader.biWidth + 8 * CharWidth;
 
                 break;
             }
 
             case 'J':
             {
-                StartingFontSheetByte = (GameBitmap->Bitmapinfo.bmiHeader.biWidth * GameBitmap->Bitmapinfo.bmiHeader.biHeight) - GameBitmap->Bitmapinfo.bmiHeader.biWidth + 9 * CharWidth;
+                StartingFontSheetPixel = (FontSheet->Bitmapinfo.bmiHeader.biWidth * FontSheet->Bitmapinfo.bmiHeader.biHeight) - FontSheet->Bitmapinfo.bmiHeader.biWidth + 9 * CharWidth;
 
                 break;
             }
 
             case 'K':
             {
-                StartingFontSheetByte = (GameBitmap->Bitmapinfo.bmiHeader.biWidth * GameBitmap->Bitmapinfo.bmiHeader.biHeight) - GameBitmap->Bitmapinfo.bmiHeader.biWidth + 10 * CharWidth;
+                StartingFontSheetPixel = (FontSheet->Bitmapinfo.bmiHeader.biWidth * FontSheet->Bitmapinfo.bmiHeader.biHeight) - FontSheet->Bitmapinfo.bmiHeader.biWidth + 10 * CharWidth;
 
                 break;
             }
 
             case 'L':
             {
-                StartingFontSheetByte = (GameBitmap->Bitmapinfo.bmiHeader.biWidth * GameBitmap->Bitmapinfo.bmiHeader.biHeight) - GameBitmap->Bitmapinfo.bmiHeader.biWidth + 11 * CharWidth;
+                StartingFontSheetPixel = (FontSheet->Bitmapinfo.bmiHeader.biWidth * FontSheet->Bitmapinfo.bmiHeader.biHeight) - FontSheet->Bitmapinfo.bmiHeader.biWidth + 11 * CharWidth;
 
                 break;
             }
 
             case 'M':
             {
-                StartingFontSheetByte = (GameBitmap->Bitmapinfo.bmiHeader.biWidth * GameBitmap->Bitmapinfo.bmiHeader.biHeight) - GameBitmap->Bitmapinfo.bmiHeader.biWidth + 12 * CharWidth;
+                StartingFontSheetPixel = (FontSheet->Bitmapinfo.bmiHeader.biWidth * FontSheet->Bitmapinfo.bmiHeader.biHeight) - FontSheet->Bitmapinfo.bmiHeader.biWidth + 12 * CharWidth;
 
                 break;
             }
 
             case 'N':
             {
-                StartingFontSheetByte = (GameBitmap->Bitmapinfo.bmiHeader.biWidth * GameBitmap->Bitmapinfo.bmiHeader.biHeight) - GameBitmap->Bitmapinfo.bmiHeader.biWidth + 13 * CharWidth;
+                StartingFontSheetPixel = (FontSheet->Bitmapinfo.bmiHeader.biWidth * FontSheet->Bitmapinfo.bmiHeader.biHeight) - FontSheet->Bitmapinfo.bmiHeader.biWidth + 13 * CharWidth;
 
                 break;
             }
 
             case 'O':
             {
-                StartingFontSheetByte = (GameBitmap->Bitmapinfo.bmiHeader.biWidth * GameBitmap->Bitmapinfo.bmiHeader.biHeight) - GameBitmap->Bitmapinfo.bmiHeader.biWidth + 14 * CharWidth;
+                StartingFontSheetPixel = (FontSheet->Bitmapinfo.bmiHeader.biWidth * FontSheet->Bitmapinfo.bmiHeader.biHeight) - FontSheet->Bitmapinfo.bmiHeader.biWidth + 14 * CharWidth;
 
                 break;
             }
 
             case 'P':
             {
-                StartingFontSheetByte = (GameBitmap->Bitmapinfo.bmiHeader.biWidth * GameBitmap->Bitmapinfo.bmiHeader.biHeight) - GameBitmap->Bitmapinfo.bmiHeader.biWidth + 15 * CharWidth;
+                StartingFontSheetPixel = (FontSheet->Bitmapinfo.bmiHeader.biWidth * FontSheet->Bitmapinfo.bmiHeader.biHeight) - FontSheet->Bitmapinfo.bmiHeader.biWidth + 15 * CharWidth;
 
                 break;
             }
 
             case 'Q':
             {
-                StartingFontSheetByte = (GameBitmap->Bitmapinfo.bmiHeader.biWidth * GameBitmap->Bitmapinfo.bmiHeader.biHeight) - GameBitmap->Bitmapinfo.bmiHeader.biWidth + 16 * CharWidth;
+                StartingFontSheetPixel = (FontSheet->Bitmapinfo.bmiHeader.biWidth * FontSheet->Bitmapinfo.bmiHeader.biHeight) - FontSheet->Bitmapinfo.bmiHeader.biWidth + 16 * CharWidth;
 
                 break;
             }
 
             case 'R':
             {
-                StartingFontSheetByte = (GameBitmap->Bitmapinfo.bmiHeader.biWidth * GameBitmap->Bitmapinfo.bmiHeader.biHeight) - GameBitmap->Bitmapinfo.bmiHeader.biWidth + 17 * CharWidth;
+                StartingFontSheetPixel = (FontSheet->Bitmapinfo.bmiHeader.biWidth * FontSheet->Bitmapinfo.bmiHeader.biHeight) - FontSheet->Bitmapinfo.bmiHeader.biWidth + 17 * CharWidth;
 
                 break;
             }
 
             case 'S':
             {
-                StartingFontSheetByte = (GameBitmap->Bitmapinfo.bmiHeader.biWidth * GameBitmap->Bitmapinfo.bmiHeader.biHeight) - GameBitmap->Bitmapinfo.bmiHeader.biWidth + 18 * CharWidth;
+                StartingFontSheetPixel = (FontSheet->Bitmapinfo.bmiHeader.biWidth * FontSheet->Bitmapinfo.bmiHeader.biHeight) - FontSheet->Bitmapinfo.bmiHeader.biWidth + 18 * CharWidth;
 
                 break;
             }
 
             case 'T':
             {
-                StartingFontSheetByte = (GameBitmap->Bitmapinfo.bmiHeader.biWidth * GameBitmap->Bitmapinfo.bmiHeader.biHeight) - GameBitmap->Bitmapinfo.bmiHeader.biWidth + 19 * CharWidth;
+                StartingFontSheetPixel = (FontSheet->Bitmapinfo.bmiHeader.biWidth * FontSheet->Bitmapinfo.bmiHeader.biHeight) - FontSheet->Bitmapinfo.bmiHeader.biWidth + 19 * CharWidth;
 
                 break;
             }
 
             case 'U':
             {
-                StartingFontSheetByte = (GameBitmap->Bitmapinfo.bmiHeader.biWidth * GameBitmap->Bitmapinfo.bmiHeader.biHeight) - GameBitmap->Bitmapinfo.bmiHeader.biWidth + 20 * CharWidth;
+                StartingFontSheetPixel = (FontSheet->Bitmapinfo.bmiHeader.biWidth * FontSheet->Bitmapinfo.bmiHeader.biHeight) - FontSheet->Bitmapinfo.bmiHeader.biWidth + 20 * CharWidth;
 
                 break;
             }
 
             case 'V':
             {
-                StartingFontSheetByte = (GameBitmap->Bitmapinfo.bmiHeader.biWidth * GameBitmap->Bitmapinfo.bmiHeader.biHeight) - GameBitmap->Bitmapinfo.bmiHeader.biWidth + 21 * CharWidth;
+                StartingFontSheetPixel = (FontSheet->Bitmapinfo.bmiHeader.biWidth * FontSheet->Bitmapinfo.bmiHeader.biHeight) - FontSheet->Bitmapinfo.bmiHeader.biWidth + 21 * CharWidth;
 
                 break;
             }
 
             case 'W':
             {
-                StartingFontSheetByte = (GameBitmap->Bitmapinfo.bmiHeader.biWidth * GameBitmap->Bitmapinfo.bmiHeader.biHeight) - GameBitmap->Bitmapinfo.bmiHeader.biWidth + 22 * CharWidth;
+                StartingFontSheetPixel = (FontSheet->Bitmapinfo.bmiHeader.biWidth * FontSheet->Bitmapinfo.bmiHeader.biHeight) - FontSheet->Bitmapinfo.bmiHeader.biWidth + 22 * CharWidth;
 
                 break;
             }
 
             case 'X':
             {
-                StartingFontSheetByte = (GameBitmap->Bitmapinfo.bmiHeader.biWidth * GameBitmap->Bitmapinfo.bmiHeader.biHeight) - GameBitmap->Bitmapinfo.bmiHeader.biWidth + 23 * CharWidth;
+                StartingFontSheetPixel = (FontSheet->Bitmapinfo.bmiHeader.biWidth * FontSheet->Bitmapinfo.bmiHeader.biHeight) - FontSheet->Bitmapinfo.bmiHeader.biWidth + 23 * CharWidth;
 
                 break;
             }
 
             case 'Y':
             {
-                StartingFontSheetByte = (GameBitmap->Bitmapinfo.bmiHeader.biWidth * GameBitmap->Bitmapinfo.bmiHeader.biHeight) - GameBitmap->Bitmapinfo.bmiHeader.biWidth + 24 * CharWidth;
+                StartingFontSheetPixel = (FontSheet->Bitmapinfo.bmiHeader.biWidth * FontSheet->Bitmapinfo.bmiHeader.biHeight) - FontSheet->Bitmapinfo.bmiHeader.biWidth + 24 * CharWidth;
 
                 break;
             }
 
             case 'Z':
             {
-                StartingFontSheetByte = (GameBitmap->Bitmapinfo.bmiHeader.biWidth * GameBitmap->Bitmapinfo.bmiHeader.biHeight) - GameBitmap->Bitmapinfo.bmiHeader.biWidth + 25 * CharWidth;
+                StartingFontSheetPixel = (FontSheet->Bitmapinfo.bmiHeader.biWidth * FontSheet->Bitmapinfo.bmiHeader.biHeight) - FontSheet->Bitmapinfo.bmiHeader.biWidth + 25 * CharWidth;
 
                 break;
             }
 
             case 'a':
             {
-                StartingFontSheetByte = (GameBitmap->Bitmapinfo.bmiHeader.biWidth * GameBitmap->Bitmapinfo.bmiHeader.biHeight) - GameBitmap->Bitmapinfo.bmiHeader.biWidth + 26 * CharWidth;
+                StartingFontSheetPixel = (FontSheet->Bitmapinfo.bmiHeader.biWidth * FontSheet->Bitmapinfo.bmiHeader.biHeight) - FontSheet->Bitmapinfo.bmiHeader.biWidth + 26 * CharWidth;
 
                 break;
             }
             case 'b':
             {
-                StartingFontSheetByte = (GameBitmap->Bitmapinfo.bmiHeader.biWidth * GameBitmap->Bitmapinfo.bmiHeader.biHeight) - GameBitmap->Bitmapinfo.bmiHeader.biWidth + 27 * CharWidth;
+                StartingFontSheetPixel = (FontSheet->Bitmapinfo.bmiHeader.biWidth * FontSheet->Bitmapinfo.bmiHeader.biHeight) - FontSheet->Bitmapinfo.bmiHeader.biWidth + 27 * CharWidth;
 
                 break;
             }
             case 'c':
             {
-                StartingFontSheetByte = (GameBitmap->Bitmapinfo.bmiHeader.biWidth * GameBitmap->Bitmapinfo.bmiHeader.biHeight) - GameBitmap->Bitmapinfo.bmiHeader.biWidth + 28 * CharWidth;
+                StartingFontSheetPixel = (FontSheet->Bitmapinfo.bmiHeader.biWidth * FontSheet->Bitmapinfo.bmiHeader.biHeight) - FontSheet->Bitmapinfo.bmiHeader.biWidth + 28 * CharWidth;
 
                 break;
             }
             case 'd':
             {
-                StartingFontSheetByte = (GameBitmap->Bitmapinfo.bmiHeader.biWidth * GameBitmap->Bitmapinfo.bmiHeader.biHeight) - GameBitmap->Bitmapinfo.bmiHeader.biWidth + 29 * CharWidth;
+                StartingFontSheetPixel = (FontSheet->Bitmapinfo.bmiHeader.biWidth * FontSheet->Bitmapinfo.bmiHeader.biHeight) - FontSheet->Bitmapinfo.bmiHeader.biWidth + 29 * CharWidth;
 
                 break;
             }
 
             case 'e':
             {
-                StartingFontSheetByte = (GameBitmap->Bitmapinfo.bmiHeader.biWidth * GameBitmap->Bitmapinfo.bmiHeader.biHeight) - GameBitmap->Bitmapinfo.bmiHeader.biWidth + 30 * CharWidth;
+                StartingFontSheetPixel = (FontSheet->Bitmapinfo.bmiHeader.biWidth * FontSheet->Bitmapinfo.bmiHeader.biHeight) - FontSheet->Bitmapinfo.bmiHeader.biWidth + 30 * CharWidth;
 
                 break;
             }
 
             case 'f':
             {
-                StartingFontSheetByte = (GameBitmap->Bitmapinfo.bmiHeader.biWidth * GameBitmap->Bitmapinfo.bmiHeader.biHeight) - GameBitmap->Bitmapinfo.bmiHeader.biWidth + 31 * CharWidth;
+                StartingFontSheetPixel = (FontSheet->Bitmapinfo.bmiHeader.biWidth * FontSheet->Bitmapinfo.bmiHeader.biHeight) - FontSheet->Bitmapinfo.bmiHeader.biWidth + 31 * CharWidth;
 
                 break;
             }
 
             case 'g':
             {
-                StartingFontSheetByte = (GameBitmap->Bitmapinfo.bmiHeader.biWidth * GameBitmap->Bitmapinfo.bmiHeader.biHeight) - GameBitmap->Bitmapinfo.bmiHeader.biWidth + 32 * CharWidth;
+                StartingFontSheetPixel = (FontSheet->Bitmapinfo.bmiHeader.biWidth * FontSheet->Bitmapinfo.bmiHeader.biHeight) - FontSheet->Bitmapinfo.bmiHeader.biWidth + 32 * CharWidth;
 
                 break;
             }
 
             case 'h':
             {
-                StartingFontSheetByte = (GameBitmap->Bitmapinfo.bmiHeader.biWidth * GameBitmap->Bitmapinfo.bmiHeader.biHeight) - GameBitmap->Bitmapinfo.bmiHeader.biWidth + 33 * CharWidth;
+                StartingFontSheetPixel = (FontSheet->Bitmapinfo.bmiHeader.biWidth * FontSheet->Bitmapinfo.bmiHeader.biHeight) - FontSheet->Bitmapinfo.bmiHeader.biWidth + 33 * CharWidth;
 
                 break;
             }
 
             case 'i':
             {
-                StartingFontSheetByte = (GameBitmap->Bitmapinfo.bmiHeader.biWidth * GameBitmap->Bitmapinfo.bmiHeader.biHeight) - GameBitmap->Bitmapinfo.bmiHeader.biWidth + 34 * CharWidth;
+                StartingFontSheetPixel = (FontSheet->Bitmapinfo.bmiHeader.biWidth * FontSheet->Bitmapinfo.bmiHeader.biHeight) - FontSheet->Bitmapinfo.bmiHeader.biWidth + 34 * CharWidth;
 
                 break;
             }
 
             case 'j':
             {
-                StartingFontSheetByte = (GameBitmap->Bitmapinfo.bmiHeader.biWidth * GameBitmap->Bitmapinfo.bmiHeader.biHeight) - GameBitmap->Bitmapinfo.bmiHeader.biWidth + 35 * CharWidth;
+                StartingFontSheetPixel = (FontSheet->Bitmapinfo.bmiHeader.biWidth * FontSheet->Bitmapinfo.bmiHeader.biHeight) - FontSheet->Bitmapinfo.bmiHeader.biWidth + 35 * CharWidth;
 
                 break;
             }
 
             case 'k':
             {
-                StartingFontSheetByte = (GameBitmap->Bitmapinfo.bmiHeader.biWidth * GameBitmap->Bitmapinfo.bmiHeader.biHeight) - GameBitmap->Bitmapinfo.bmiHeader.biWidth + 36 * CharWidth;
+                StartingFontSheetPixel = (FontSheet->Bitmapinfo.bmiHeader.biWidth * FontSheet->Bitmapinfo.bmiHeader.biHeight) - FontSheet->Bitmapinfo.bmiHeader.biWidth + 36 * CharWidth;
 
                 break;
             }
 
             case 'l':
             {
-                StartingFontSheetByte = (GameBitmap->Bitmapinfo.bmiHeader.biWidth * GameBitmap->Bitmapinfo.bmiHeader.biHeight) - GameBitmap->Bitmapinfo.bmiHeader.biWidth + 37 * CharWidth;
+                StartingFontSheetPixel = (FontSheet->Bitmapinfo.bmiHeader.biWidth * FontSheet->Bitmapinfo.bmiHeader.biHeight) - FontSheet->Bitmapinfo.bmiHeader.biWidth + 37 * CharWidth;
 
                 break;
             }
 
             case 'm':
             {
-                StartingFontSheetByte = (GameBitmap->Bitmapinfo.bmiHeader.biWidth * GameBitmap->Bitmapinfo.bmiHeader.biHeight) - GameBitmap->Bitmapinfo.bmiHeader.biWidth + 38 * CharWidth;
+                StartingFontSheetPixel = (FontSheet->Bitmapinfo.bmiHeader.biWidth * FontSheet->Bitmapinfo.bmiHeader.biHeight) - FontSheet->Bitmapinfo.bmiHeader.biWidth + 38 * CharWidth;
 
                 break;
             }
 
             case 'n':
             {
-                StartingFontSheetByte = (GameBitmap->Bitmapinfo.bmiHeader.biWidth * GameBitmap->Bitmapinfo.bmiHeader.biHeight) - GameBitmap->Bitmapinfo.bmiHeader.biWidth + 39 * CharWidth;
+                StartingFontSheetPixel = (FontSheet->Bitmapinfo.bmiHeader.biWidth * FontSheet->Bitmapinfo.bmiHeader.biHeight) - FontSheet->Bitmapinfo.bmiHeader.biWidth + 39 * CharWidth;
 
                 break;
             }
 
             case 'o':
             {
-                StartingFontSheetByte = (GameBitmap->Bitmapinfo.bmiHeader.biWidth * GameBitmap->Bitmapinfo.bmiHeader.biHeight) - GameBitmap->Bitmapinfo.bmiHeader.biWidth + 40 * CharWidth;
+                StartingFontSheetPixel = (FontSheet->Bitmapinfo.bmiHeader.biWidth * FontSheet->Bitmapinfo.bmiHeader.biHeight) - FontSheet->Bitmapinfo.bmiHeader.biWidth + 40 * CharWidth;
 
                 break;
             }
 
             case 'p':
             {
-                StartingFontSheetByte = (GameBitmap->Bitmapinfo.bmiHeader.biWidth * GameBitmap->Bitmapinfo.bmiHeader.biHeight) - GameBitmap->Bitmapinfo.bmiHeader.biWidth + 41 * CharWidth;
+                StartingFontSheetPixel = (FontSheet->Bitmapinfo.bmiHeader.biWidth * FontSheet->Bitmapinfo.bmiHeader.biHeight) - FontSheet->Bitmapinfo.bmiHeader.biWidth + 41 * CharWidth;
 
                 break;
             }
 
             case 'q':
             {
-                StartingFontSheetByte = (GameBitmap->Bitmapinfo.bmiHeader.biWidth * GameBitmap->Bitmapinfo.bmiHeader.biHeight) - GameBitmap->Bitmapinfo.bmiHeader.biWidth + 42 * CharWidth;
+                StartingFontSheetPixel = (FontSheet->Bitmapinfo.bmiHeader.biWidth * FontSheet->Bitmapinfo.bmiHeader.biHeight) - FontSheet->Bitmapinfo.bmiHeader.biWidth + 42 * CharWidth;
 
                 break;
             }
 
             case 'r':
             {
-                StartingFontSheetByte = (GameBitmap->Bitmapinfo.bmiHeader.biWidth * GameBitmap->Bitmapinfo.bmiHeader.biHeight) - GameBitmap->Bitmapinfo.bmiHeader.biWidth + 43 * CharWidth;
+                StartingFontSheetPixel = (FontSheet->Bitmapinfo.bmiHeader.biWidth * FontSheet->Bitmapinfo.bmiHeader.biHeight) - FontSheet->Bitmapinfo.bmiHeader.biWidth + 43 * CharWidth;
 
                 break;
             }
 
             case 's':
             {
-                StartingFontSheetByte = (GameBitmap->Bitmapinfo.bmiHeader.biWidth * GameBitmap->Bitmapinfo.bmiHeader.biHeight) - GameBitmap->Bitmapinfo.bmiHeader.biWidth + 44 * CharWidth;
+                StartingFontSheetPixel = (FontSheet->Bitmapinfo.bmiHeader.biWidth * FontSheet->Bitmapinfo.bmiHeader.biHeight) - FontSheet->Bitmapinfo.bmiHeader.biWidth + 44 * CharWidth;
 
                 break;
             }
 
             case 't':
             {
-                StartingFontSheetByte = (GameBitmap->Bitmapinfo.bmiHeader.biWidth * GameBitmap->Bitmapinfo.bmiHeader.biHeight) - GameBitmap->Bitmapinfo.bmiHeader.biWidth + 45 * CharWidth;
+                StartingFontSheetPixel = (FontSheet->Bitmapinfo.bmiHeader.biWidth * FontSheet->Bitmapinfo.bmiHeader.biHeight) - FontSheet->Bitmapinfo.bmiHeader.biWidth + 45 * CharWidth;
 
                 break;
             }
 
             case 'u':
             {
-                StartingFontSheetByte = (GameBitmap->Bitmapinfo.bmiHeader.biWidth * GameBitmap->Bitmapinfo.bmiHeader.biHeight) - GameBitmap->Bitmapinfo.bmiHeader.biWidth + 46 * CharWidth;
+                StartingFontSheetPixel = (FontSheet->Bitmapinfo.bmiHeader.biWidth * FontSheet->Bitmapinfo.bmiHeader.biHeight) - FontSheet->Bitmapinfo.bmiHeader.biWidth + 46 * CharWidth;
 
                 break;
             }
 
             case 'v':
             {
-                StartingFontSheetByte = (GameBitmap->Bitmapinfo.bmiHeader.biWidth * GameBitmap->Bitmapinfo.bmiHeader.biHeight) - GameBitmap->Bitmapinfo.bmiHeader.biWidth + 47 * CharWidth;
+                StartingFontSheetPixel = (FontSheet->Bitmapinfo.bmiHeader.biWidth * FontSheet->Bitmapinfo.bmiHeader.biHeight) - FontSheet->Bitmapinfo.bmiHeader.biWidth + 47 * CharWidth;
 
                 break;
             }
 
             case 'w':
             {
-                StartingFontSheetByte = (GameBitmap->Bitmapinfo.bmiHeader.biWidth * GameBitmap->Bitmapinfo.bmiHeader.biHeight) - GameBitmap->Bitmapinfo.bmiHeader.biWidth + 48 * CharWidth;
+                StartingFontSheetPixel = (FontSheet->Bitmapinfo.bmiHeader.biWidth * FontSheet->Bitmapinfo.bmiHeader.biHeight) - FontSheet->Bitmapinfo.bmiHeader.biWidth + 48 * CharWidth;
 
                 break;
             }
 
             case 'x':
             {
-                StartingFontSheetByte = (GameBitmap->Bitmapinfo.bmiHeader.biWidth * GameBitmap->Bitmapinfo.bmiHeader.biHeight) - GameBitmap->Bitmapinfo.bmiHeader.biWidth + 49 * CharWidth;
+                StartingFontSheetPixel = (FontSheet->Bitmapinfo.bmiHeader.biWidth * FontSheet->Bitmapinfo.bmiHeader.biHeight) - FontSheet->Bitmapinfo.bmiHeader.biWidth + 49 * CharWidth;
 
                 break;
             }
 
             case 'y':
             {
-                StartingFontSheetByte = (GameBitmap->Bitmapinfo.bmiHeader.biWidth * GameBitmap->Bitmapinfo.bmiHeader.biHeight) - GameBitmap->Bitmapinfo.bmiHeader.biWidth + 50 * CharWidth;
+                StartingFontSheetPixel = (FontSheet->Bitmapinfo.bmiHeader.biWidth * FontSheet->Bitmapinfo.bmiHeader.biHeight) - FontSheet->Bitmapinfo.bmiHeader.biWidth + 50 * CharWidth;
 
                 break;
             }
 
             case 'z':
             {
-                StartingFontSheetByte = (GameBitmap->Bitmapinfo.bmiHeader.biWidth * GameBitmap->Bitmapinfo.bmiHeader.biHeight) - GameBitmap->Bitmapinfo.bmiHeader.biWidth + 51 * CharWidth;
+                StartingFontSheetPixel = (FontSheet->Bitmapinfo.bmiHeader.biWidth * FontSheet->Bitmapinfo.bmiHeader.biHeight) - FontSheet->Bitmapinfo.bmiHeader.biWidth + 51 * CharWidth;
 
                 break;
             }
 
             case '0':
             {
-                StartingFontSheetByte = (GameBitmap->Bitmapinfo.bmiHeader.biWidth * GameBitmap->Bitmapinfo.bmiHeader.biHeight) - GameBitmap->Bitmapinfo.bmiHeader.biWidth + 52 * CharWidth;
+                StartingFontSheetPixel = (FontSheet->Bitmapinfo.bmiHeader.biWidth * FontSheet->Bitmapinfo.bmiHeader.biHeight) - FontSheet->Bitmapinfo.bmiHeader.biWidth + 52 * CharWidth;
 
                 break;
             }
 
             case '1':
             {
-                StartingFontSheetByte = (GameBitmap->Bitmapinfo.bmiHeader.biWidth * GameBitmap->Bitmapinfo.bmiHeader.biHeight) - GameBitmap->Bitmapinfo.bmiHeader.biWidth + 53 * CharWidth;
+                StartingFontSheetPixel = (FontSheet->Bitmapinfo.bmiHeader.biWidth * FontSheet->Bitmapinfo.bmiHeader.biHeight) - FontSheet->Bitmapinfo.bmiHeader.biWidth + 53 * CharWidth;
 
                 break;
             }
 
             case '2':
             {
-                StartingFontSheetByte = (GameBitmap->Bitmapinfo.bmiHeader.biWidth * GameBitmap->Bitmapinfo.bmiHeader.biHeight) - GameBitmap->Bitmapinfo.bmiHeader.biWidth + 54 * CharWidth;
+                StartingFontSheetPixel = (FontSheet->Bitmapinfo.bmiHeader.biWidth * FontSheet->Bitmapinfo.bmiHeader.biHeight) - FontSheet->Bitmapinfo.bmiHeader.biWidth + 54 * CharWidth;
 
                 break;
             }
 
             case '3':
             {
-                StartingFontSheetByte = (GameBitmap->Bitmapinfo.bmiHeader.biWidth * GameBitmap->Bitmapinfo.bmiHeader.biHeight) - GameBitmap->Bitmapinfo.bmiHeader.biWidth + 55 * CharWidth;
+                StartingFontSheetPixel = (FontSheet->Bitmapinfo.bmiHeader.biWidth * FontSheet->Bitmapinfo.bmiHeader.biHeight) - FontSheet->Bitmapinfo.bmiHeader.biWidth + 55 * CharWidth;
 
                 break;
             }
 
             case '4':
             {
-                StartingFontSheetByte = (GameBitmap->Bitmapinfo.bmiHeader.biWidth * GameBitmap->Bitmapinfo.bmiHeader.biHeight) - GameBitmap->Bitmapinfo.bmiHeader.biWidth + 56 * CharWidth;
+                StartingFontSheetPixel = (FontSheet->Bitmapinfo.bmiHeader.biWidth * FontSheet->Bitmapinfo.bmiHeader.biHeight) - FontSheet->Bitmapinfo.bmiHeader.biWidth + 56 * CharWidth;
 
                 break;
             }
 
             case '5':
             {
-                StartingFontSheetByte = (GameBitmap->Bitmapinfo.bmiHeader.biWidth * GameBitmap->Bitmapinfo.bmiHeader.biHeight) - GameBitmap->Bitmapinfo.bmiHeader.biWidth + 57 * CharWidth;
+                StartingFontSheetPixel = (FontSheet->Bitmapinfo.bmiHeader.biWidth * FontSheet->Bitmapinfo.bmiHeader.biHeight) - FontSheet->Bitmapinfo.bmiHeader.biWidth + 57 * CharWidth;
 
                 break;
             }
 
             case '6':
             {
-                StartingFontSheetByte = (GameBitmap->Bitmapinfo.bmiHeader.biWidth * GameBitmap->Bitmapinfo.bmiHeader.biHeight) - GameBitmap->Bitmapinfo.bmiHeader.biWidth + 58 * CharWidth;
+                StartingFontSheetPixel = (FontSheet->Bitmapinfo.bmiHeader.biWidth * FontSheet->Bitmapinfo.bmiHeader.biHeight) - FontSheet->Bitmapinfo.bmiHeader.biWidth + 58 * CharWidth;
 
                 break;
             }
 
             case '7':
             {
-                StartingFontSheetByte = (GameBitmap->Bitmapinfo.bmiHeader.biWidth * GameBitmap->Bitmapinfo.bmiHeader.biHeight) - GameBitmap->Bitmapinfo.bmiHeader.biWidth + 59 * CharWidth;
+                StartingFontSheetPixel = (FontSheet->Bitmapinfo.bmiHeader.biWidth * FontSheet->Bitmapinfo.bmiHeader.biHeight) - FontSheet->Bitmapinfo.bmiHeader.biWidth + 59 * CharWidth;
 
                 break;
             }
 
             case '8':
             {
-                StartingFontSheetByte = (GameBitmap->Bitmapinfo.bmiHeader.biWidth * GameBitmap->Bitmapinfo.bmiHeader.biHeight) - GameBitmap->Bitmapinfo.bmiHeader.biWidth + 60 * CharWidth;
+                StartingFontSheetPixel = (FontSheet->Bitmapinfo.bmiHeader.biWidth * FontSheet->Bitmapinfo.bmiHeader.biHeight) - FontSheet->Bitmapinfo.bmiHeader.biWidth + 60 * CharWidth;
 
                 break;
             }
 
             case '9':
             {
-                StartingFontSheetByte = (GameBitmap->Bitmapinfo.bmiHeader.biWidth * GameBitmap->Bitmapinfo.bmiHeader.biHeight) - GameBitmap->Bitmapinfo.bmiHeader.biWidth + 61 * CharWidth;
+                StartingFontSheetPixel = (FontSheet->Bitmapinfo.bmiHeader.biWidth * FontSheet->Bitmapinfo.bmiHeader.biHeight) - FontSheet->Bitmapinfo.bmiHeader.biWidth + 61 * CharWidth;
 
                 break;
             }
 
             case '`':
             {
-                StartingFontSheetByte = (GameBitmap->Bitmapinfo.bmiHeader.biWidth * GameBitmap->Bitmapinfo.bmiHeader.biHeight) - GameBitmap->Bitmapinfo.bmiHeader.biWidth + 62 * CharWidth;
+                StartingFontSheetPixel = (FontSheet->Bitmapinfo.bmiHeader.biWidth * FontSheet->Bitmapinfo.bmiHeader.biHeight) - FontSheet->Bitmapinfo.bmiHeader.biWidth + 62 * CharWidth;
 
                 break;
             }
             case '~':
             {
-                StartingFontSheetByte = (GameBitmap->Bitmapinfo.bmiHeader.biWidth * GameBitmap->Bitmapinfo.bmiHeader.biHeight) - GameBitmap->Bitmapinfo.bmiHeader.biWidth + 63 * CharWidth;
+                StartingFontSheetPixel = (FontSheet->Bitmapinfo.bmiHeader.biWidth * FontSheet->Bitmapinfo.bmiHeader.biHeight) - FontSheet->Bitmapinfo.bmiHeader.biWidth + 63 * CharWidth;
 
                 break;
             }
             case '!':
             {
-                StartingFontSheetByte = (GameBitmap->Bitmapinfo.bmiHeader.biWidth * GameBitmap->Bitmapinfo.bmiHeader.biHeight) - GameBitmap->Bitmapinfo.bmiHeader.biWidth + 64 * CharWidth;
+                StartingFontSheetPixel = (FontSheet->Bitmapinfo.bmiHeader.biWidth * FontSheet->Bitmapinfo.bmiHeader.biHeight) - FontSheet->Bitmapinfo.bmiHeader.biWidth + 64 * CharWidth;
 
                 break;
             }
             case '@':
             {
-                StartingFontSheetByte = (GameBitmap->Bitmapinfo.bmiHeader.biWidth * GameBitmap->Bitmapinfo.bmiHeader.biHeight) - GameBitmap->Bitmapinfo.bmiHeader.biWidth + 65 * CharWidth;
+                StartingFontSheetPixel = (FontSheet->Bitmapinfo.bmiHeader.biWidth * FontSheet->Bitmapinfo.bmiHeader.biHeight) - FontSheet->Bitmapinfo.bmiHeader.biWidth + 65 * CharWidth;
 
                 break;
             }
             case '#':
             {
-                StartingFontSheetByte = (GameBitmap->Bitmapinfo.bmiHeader.biWidth * GameBitmap->Bitmapinfo.bmiHeader.biHeight) - GameBitmap->Bitmapinfo.bmiHeader.biWidth + 66 * CharWidth;
+                StartingFontSheetPixel = (FontSheet->Bitmapinfo.bmiHeader.biWidth * FontSheet->Bitmapinfo.bmiHeader.biHeight) - FontSheet->Bitmapinfo.bmiHeader.biWidth + 66 * CharWidth;
 
                 break;
             }
             case '$':
             {
-                StartingFontSheetByte = (GameBitmap->Bitmapinfo.bmiHeader.biWidth * GameBitmap->Bitmapinfo.bmiHeader.biHeight) - GameBitmap->Bitmapinfo.bmiHeader.biWidth + 67 * CharWidth;
+                StartingFontSheetPixel = (FontSheet->Bitmapinfo.bmiHeader.biWidth * FontSheet->Bitmapinfo.bmiHeader.biHeight) - FontSheet->Bitmapinfo.bmiHeader.biWidth + 67 * CharWidth;
 
                 break;
             }
             case '%':
             {
-                StartingFontSheetByte = (GameBitmap->Bitmapinfo.bmiHeader.biWidth * GameBitmap->Bitmapinfo.bmiHeader.biHeight) - GameBitmap->Bitmapinfo.bmiHeader.biWidth + 68 * CharWidth;
+                StartingFontSheetPixel = (FontSheet->Bitmapinfo.bmiHeader.biWidth * FontSheet->Bitmapinfo.bmiHeader.biHeight) - FontSheet->Bitmapinfo.bmiHeader.biWidth + 68 * CharWidth;
 
                 break;
             }
             case '^':
             {
-                StartingFontSheetByte = (GameBitmap->Bitmapinfo.bmiHeader.biWidth * GameBitmap->Bitmapinfo.bmiHeader.biHeight) - GameBitmap->Bitmapinfo.bmiHeader.biWidth + 69 * CharWidth;
+                StartingFontSheetPixel = (FontSheet->Bitmapinfo.bmiHeader.biWidth * FontSheet->Bitmapinfo.bmiHeader.biHeight) - FontSheet->Bitmapinfo.bmiHeader.biWidth + 69 * CharWidth;
 
                 break;
             }
             case '&':
             {
-                StartingFontSheetByte = (GameBitmap->Bitmapinfo.bmiHeader.biWidth * GameBitmap->Bitmapinfo.bmiHeader.biHeight) - GameBitmap->Bitmapinfo.bmiHeader.biWidth + 70 * CharWidth;
+                StartingFontSheetPixel = (FontSheet->Bitmapinfo.bmiHeader.biWidth * FontSheet->Bitmapinfo.bmiHeader.biHeight) - FontSheet->Bitmapinfo.bmiHeader.biWidth + 70 * CharWidth;
 
                 break;
             }
             case '*':
             {
-                StartingFontSheetByte = (GameBitmap->Bitmapinfo.bmiHeader.biWidth * GameBitmap->Bitmapinfo.bmiHeader.biHeight) - GameBitmap->Bitmapinfo.bmiHeader.biWidth + 71 * CharWidth;
+                StartingFontSheetPixel = (FontSheet->Bitmapinfo.bmiHeader.biWidth * FontSheet->Bitmapinfo.bmiHeader.biHeight) - FontSheet->Bitmapinfo.bmiHeader.biWidth + 71 * CharWidth;
 
                 break;
             }
             case '(':
             {
-                StartingFontSheetByte = (GameBitmap->Bitmapinfo.bmiHeader.biWidth * GameBitmap->Bitmapinfo.bmiHeader.biHeight) - GameBitmap->Bitmapinfo.bmiHeader.biWidth + 72 * CharWidth;
+                StartingFontSheetPixel = (FontSheet->Bitmapinfo.bmiHeader.biWidth * FontSheet->Bitmapinfo.bmiHeader.biHeight) - FontSheet->Bitmapinfo.bmiHeader.biWidth + 72 * CharWidth;
 
                 break;
             }
             case ')':
             {
-                StartingFontSheetByte = (GameBitmap->Bitmapinfo.bmiHeader.biWidth * GameBitmap->Bitmapinfo.bmiHeader.biHeight) - GameBitmap->Bitmapinfo.bmiHeader.biWidth + 73 * CharWidth;
+                StartingFontSheetPixel = (FontSheet->Bitmapinfo.bmiHeader.biWidth * FontSheet->Bitmapinfo.bmiHeader.biHeight) - FontSheet->Bitmapinfo.bmiHeader.biWidth + 73 * CharWidth;
 
                 break;
             }
             case '-':
             {
-                StartingFontSheetByte = (GameBitmap->Bitmapinfo.bmiHeader.biWidth * GameBitmap->Bitmapinfo.bmiHeader.biHeight) - GameBitmap->Bitmapinfo.bmiHeader.biWidth + 74 * CharWidth;
+                StartingFontSheetPixel = (FontSheet->Bitmapinfo.bmiHeader.biWidth * FontSheet->Bitmapinfo.bmiHeader.biHeight) - FontSheet->Bitmapinfo.bmiHeader.biWidth + 74 * CharWidth;
 
                 break;
             }
             case '=':
             {
-                StartingFontSheetByte = (GameBitmap->Bitmapinfo.bmiHeader.biWidth * GameBitmap->Bitmapinfo.bmiHeader.biHeight) - GameBitmap->Bitmapinfo.bmiHeader.biWidth + 75 * CharWidth;
+                StartingFontSheetPixel = (FontSheet->Bitmapinfo.bmiHeader.biWidth * FontSheet->Bitmapinfo.bmiHeader.biHeight) - FontSheet->Bitmapinfo.bmiHeader.biWidth + 75 * CharWidth;
 
                 break;
             }
             case '_':
             {
-                StartingFontSheetByte = (GameBitmap->Bitmapinfo.bmiHeader.biWidth * GameBitmap->Bitmapinfo.bmiHeader.biHeight) - GameBitmap->Bitmapinfo.bmiHeader.biWidth + 76 * CharWidth;
+                StartingFontSheetPixel = (FontSheet->Bitmapinfo.bmiHeader.biWidth * FontSheet->Bitmapinfo.bmiHeader.biHeight) - FontSheet->Bitmapinfo.bmiHeader.biWidth + 76 * CharWidth;
 
                 break;
             }
             case '+':
             {
-                StartingFontSheetByte = (GameBitmap->Bitmapinfo.bmiHeader.biWidth * GameBitmap->Bitmapinfo.bmiHeader.biHeight) - GameBitmap->Bitmapinfo.bmiHeader.biWidth + 77 * CharWidth;
+                StartingFontSheetPixel = (FontSheet->Bitmapinfo.bmiHeader.biWidth * FontSheet->Bitmapinfo.bmiHeader.biHeight) - FontSheet->Bitmapinfo.bmiHeader.biWidth + 77 * CharWidth;
 
                 break;
             }
             case '\\':
             {
-                StartingFontSheetByte = (GameBitmap->Bitmapinfo.bmiHeader.biWidth * GameBitmap->Bitmapinfo.bmiHeader.biHeight) - GameBitmap->Bitmapinfo.bmiHeader.biWidth + 78 * CharWidth;
+                StartingFontSheetPixel = (FontSheet->Bitmapinfo.bmiHeader.biWidth * FontSheet->Bitmapinfo.bmiHeader.biHeight) - FontSheet->Bitmapinfo.bmiHeader.biWidth + 78 * CharWidth;
 
                 break;
             }
             case '|':
             {
-                StartingFontSheetByte = (GameBitmap->Bitmapinfo.bmiHeader.biWidth * GameBitmap->Bitmapinfo.bmiHeader.biHeight) - GameBitmap->Bitmapinfo.bmiHeader.biWidth + 79 * CharWidth;
+                StartingFontSheetPixel = (FontSheet->Bitmapinfo.bmiHeader.biWidth * FontSheet->Bitmapinfo.bmiHeader.biHeight) - FontSheet->Bitmapinfo.bmiHeader.biWidth + 79 * CharWidth;
 
                 break;
             }
             case '[':
             {
-                StartingFontSheetByte = (GameBitmap->Bitmapinfo.bmiHeader.biWidth * GameBitmap->Bitmapinfo.bmiHeader.biHeight) - GameBitmap->Bitmapinfo.bmiHeader.biWidth + 80 * CharWidth;
+                StartingFontSheetPixel = (FontSheet->Bitmapinfo.bmiHeader.biWidth * FontSheet->Bitmapinfo.bmiHeader.biHeight) - FontSheet->Bitmapinfo.bmiHeader.biWidth + 80 * CharWidth;
 
                 break;
             }
             case ']':
             {
-                StartingFontSheetByte = (GameBitmap->Bitmapinfo.bmiHeader.biWidth * GameBitmap->Bitmapinfo.bmiHeader.biHeight) - GameBitmap->Bitmapinfo.bmiHeader.biWidth + 81 * CharWidth;
+                StartingFontSheetPixel = (FontSheet->Bitmapinfo.bmiHeader.biWidth * FontSheet->Bitmapinfo.bmiHeader.biHeight) - FontSheet->Bitmapinfo.bmiHeader.biWidth + 81 * CharWidth;
 
                 break;
             }
             case '{':
             {
-                StartingFontSheetByte = (GameBitmap->Bitmapinfo.bmiHeader.biWidth * GameBitmap->Bitmapinfo.bmiHeader.biHeight) - GameBitmap->Bitmapinfo.bmiHeader.biWidth + 82 * CharWidth;
+                StartingFontSheetPixel = (FontSheet->Bitmapinfo.bmiHeader.biWidth * FontSheet->Bitmapinfo.bmiHeader.biHeight) - FontSheet->Bitmapinfo.bmiHeader.biWidth + 82 * CharWidth;
 
                 break;
             }
             case '}':
             {
-                StartingFontSheetByte = (GameBitmap->Bitmapinfo.bmiHeader.biWidth * GameBitmap->Bitmapinfo.bmiHeader.biHeight) - GameBitmap->Bitmapinfo.bmiHeader.biWidth + 83 * CharWidth;
+                StartingFontSheetPixel = (FontSheet->Bitmapinfo.bmiHeader.biWidth * FontSheet->Bitmapinfo.bmiHeader.biHeight) - FontSheet->Bitmapinfo.bmiHeader.biWidth + 83 * CharWidth;
 
                 break;
             }
             case ';':
             {
-                StartingFontSheetByte = (GameBitmap->Bitmapinfo.bmiHeader.biWidth * GameBitmap->Bitmapinfo.bmiHeader.biHeight) - GameBitmap->Bitmapinfo.bmiHeader.biWidth + 84 * CharWidth;
+                StartingFontSheetPixel = (FontSheet->Bitmapinfo.bmiHeader.biWidth * FontSheet->Bitmapinfo.bmiHeader.biHeight) - FontSheet->Bitmapinfo.bmiHeader.biWidth + 84 * CharWidth;
 
                 break;
             }
             case '\xF':
             {
-                StartingFontSheetByte = (GameBitmap->Bitmapinfo.bmiHeader.biWidth * GameBitmap->Bitmapinfo.bmiHeader.biHeight) - GameBitmap->Bitmapinfo.bmiHeader.biWidth + 85 * CharWidth;
+                StartingFontSheetPixel = (FontSheet->Bitmapinfo.bmiHeader.biWidth * FontSheet->Bitmapinfo.bmiHeader.biHeight) - FontSheet->Bitmapinfo.bmiHeader.biWidth + 85 * CharWidth;
 
                 break;
             }
             case ':':
             {
-                StartingFontSheetByte = (GameBitmap->Bitmapinfo.bmiHeader.biWidth * GameBitmap->Bitmapinfo.bmiHeader.biHeight) - GameBitmap->Bitmapinfo.bmiHeader.biWidth + 86 * CharWidth;
+                StartingFontSheetPixel = (FontSheet->Bitmapinfo.bmiHeader.biWidth * FontSheet->Bitmapinfo.bmiHeader.biHeight) - FontSheet->Bitmapinfo.bmiHeader.biWidth + 86 * CharWidth;
 
                 break;
             }
             case '"':
             {
-                StartingFontSheetByte = (GameBitmap->Bitmapinfo.bmiHeader.biWidth * GameBitmap->Bitmapinfo.bmiHeader.biHeight) - GameBitmap->Bitmapinfo.bmiHeader.biWidth + 87 * CharWidth;
+                StartingFontSheetPixel = (FontSheet->Bitmapinfo.bmiHeader.biWidth * FontSheet->Bitmapinfo.bmiHeader.biHeight) - FontSheet->Bitmapinfo.bmiHeader.biWidth + 87 * CharWidth;
 
                 break;
             }
             case ',':
             {
-                StartingFontSheetByte = (GameBitmap->Bitmapinfo.bmiHeader.biWidth * GameBitmap->Bitmapinfo.bmiHeader.biHeight) - GameBitmap->Bitmapinfo.bmiHeader.biWidth + 88 * CharWidth;
+                StartingFontSheetPixel = (FontSheet->Bitmapinfo.bmiHeader.biWidth * FontSheet->Bitmapinfo.bmiHeader.biHeight) - FontSheet->Bitmapinfo.bmiHeader.biWidth + 88 * CharWidth;
 
                 break;
             }
             case '<':
             {
-                StartingFontSheetByte = (GameBitmap->Bitmapinfo.bmiHeader.biWidth * GameBitmap->Bitmapinfo.bmiHeader.biHeight) - GameBitmap->Bitmapinfo.bmiHeader.biWidth + 89 * CharWidth;
+                StartingFontSheetPixel = (FontSheet->Bitmapinfo.bmiHeader.biWidth * FontSheet->Bitmapinfo.bmiHeader.biHeight) - FontSheet->Bitmapinfo.bmiHeader.biWidth + 89 * CharWidth;
 
                 break;
             }
             case '>':
             {
-                StartingFontSheetByte = (GameBitmap->Bitmapinfo.bmiHeader.biWidth * GameBitmap->Bitmapinfo.bmiHeader.biHeight) - GameBitmap->Bitmapinfo.bmiHeader.biWidth + 90 * CharWidth;
+                StartingFontSheetPixel = (FontSheet->Bitmapinfo.bmiHeader.biWidth * FontSheet->Bitmapinfo.bmiHeader.biHeight) - FontSheet->Bitmapinfo.bmiHeader.biWidth + 90 * CharWidth;
 
                 break;
             }
             case '.':
             {
-                StartingFontSheetByte = (GameBitmap->Bitmapinfo.bmiHeader.biWidth * GameBitmap->Bitmapinfo.bmiHeader.biHeight) - GameBitmap->Bitmapinfo.bmiHeader.biWidth + 91 * CharWidth;
+                StartingFontSheetPixel = (FontSheet->Bitmapinfo.bmiHeader.biWidth * FontSheet->Bitmapinfo.bmiHeader.biHeight) - FontSheet->Bitmapinfo.bmiHeader.biWidth + 91 * CharWidth;
 
                 break;
             }
             case '/':
             {
-                StartingFontSheetByte = (GameBitmap->Bitmapinfo.bmiHeader.biWidth * GameBitmap->Bitmapinfo.bmiHeader.biHeight) - GameBitmap->Bitmapinfo.bmiHeader.biWidth + 92 * CharWidth;
+                StartingFontSheetPixel = (FontSheet->Bitmapinfo.bmiHeader.biWidth * FontSheet->Bitmapinfo.bmiHeader.biHeight) - FontSheet->Bitmapinfo.bmiHeader.biWidth + 92 * CharWidth;
 
                 break;
             }
             case '?':
             {
-                StartingFontSheetByte = (GameBitmap->Bitmapinfo.bmiHeader.biWidth * GameBitmap->Bitmapinfo.bmiHeader.biHeight) - GameBitmap->Bitmapinfo.bmiHeader.biWidth + 93 * CharWidth;
+                StartingFontSheetPixel = (FontSheet->Bitmapinfo.bmiHeader.biWidth * FontSheet->Bitmapinfo.bmiHeader.biHeight) - FontSheet->Bitmapinfo.bmiHeader.biWidth + 93 * CharWidth;
 
                 break;
             }
             case ' ':
             {
-                StartingFontSheetByte = (GameBitmap->Bitmapinfo.bmiHeader.biWidth * GameBitmap->Bitmapinfo.bmiHeader.biHeight) - GameBitmap->Bitmapinfo.bmiHeader.biWidth + 94 * CharWidth;
+                StartingFontSheetPixel = (FontSheet->Bitmapinfo.bmiHeader.biWidth * FontSheet->Bitmapinfo.bmiHeader.biHeight) - FontSheet->Bitmapinfo.bmiHeader.biWidth + 94 * CharWidth;
 
                 break;
             }
             case '\xbb':
             {
-                StartingFontSheetByte = (GameBitmap->Bitmapinfo.bmiHeader.biWidth * GameBitmap->Bitmapinfo.bmiHeader.biHeight) - GameBitmap->Bitmapinfo.bmiHeader.biWidth + 95 * CharWidth;
+                StartingFontSheetPixel = (FontSheet->Bitmapinfo.bmiHeader.biWidth * FontSheet->Bitmapinfo.bmiHeader.biHeight) - FontSheet->Bitmapinfo.bmiHeader.biWidth + 95 * CharWidth;
 
                 break;
             }
             case '\xAB':
             {
-                StartingFontSheetByte = (GameBitmap->Bitmapinfo.bmiHeader.biWidth * GameBitmap->Bitmapinfo.bmiHeader.biHeight) - GameBitmap->Bitmapinfo.bmiHeader.biWidth + 96 * CharWidth;
+                StartingFontSheetPixel = (FontSheet->Bitmapinfo.bmiHeader.biWidth * FontSheet->Bitmapinfo.bmiHeader.biHeight) - FontSheet->Bitmapinfo.bmiHeader.biWidth + 96 * CharWidth;
 
                 break;
             }
             case '\xf2':
             {
-                StartingFontSheetByte = (GameBitmap->Bitmapinfo.bmiHeader.biWidth * GameBitmap->Bitmapinfo.bmiHeader.biHeight) - GameBitmap->Bitmapinfo.bmiHeader.biWidth + 97 * CharWidth;
+                StartingFontSheetPixel = (FontSheet->Bitmapinfo.bmiHeader.biWidth * FontSheet->Bitmapinfo.bmiHeader.biHeight) - FontSheet->Bitmapinfo.bmiHeader.biWidth + 97 * CharWidth;
 
                 break;
             }
 
             default:
             {
-                StartingFontSheetByte = (GameBitmap->Bitmapinfo.bmiHeader.biWidth * GameBitmap->Bitmapinfo.bmiHeader.biHeight) - GameBitmap->Bitmapinfo.bmiHeader.biWidth + 93 * CharWidth; // question mark
+                StartingFontSheetPixel = (FontSheet->Bitmapinfo.bmiHeader.biWidth * FontSheet->Bitmapinfo.bmiHeader.biHeight) - FontSheet->Bitmapinfo.bmiHeader.biWidth + 93 * CharWidth; // question mark
             }
         }
 
@@ -1434,18 +1473,18 @@ void BlitStringToBuffer(_In_ char* String, _In_ GAMEBITMAP* GameBitmap, _In_ uin
         {
             for (int XPixel = 0; XPixel < CharWidth; XPixel++)
             {
-                FontSheetOffset = StartingFontSheetByte + XPixel - (GameBitmap->Bitmapinfo.bmiHeader.biWidth * YPixel);
+                FontSheetOffset = StartingFontSheetPixel + XPixel - (FontSheet->Bitmapinfo.bmiHeader.biWidth * YPixel);
 
                 StringBitmapOffset = (Character * CharWidth) + ((StringBitmap.Bitmapinfo.bmiHeader.biWidth * StringBitmap.Bitmapinfo.bmiHeader.biHeight) - \
                     StringBitmap.Bitmapinfo.bmiHeader.biWidth) + XPixel - (StringBitmap.Bitmapinfo.bmiHeader.biWidth) * YPixel;
             
-                memcpy_s(&FontSheetPixel, sizeof(PIXEL32), (PIXEL32*)GameBitmap->Memory + FontSheetOffset, sizeof(PIXEL32));
+                memcpy_s(&FontSheetPixel, sizeof(PIXEL32), (PIXEL32*)FontSheet->Memory + FontSheetOffset, sizeof(PIXEL32));
 
-                FontSheetPixel.Green = 0x00;
+                FontSheetPixel.Green = Color.Green;
 
-                FontSheetPixel.Red = 0xff;
+                FontSheetPixel.Red = Color.Red;
 
-                FontSheetPixel.Blue = 0x00;
+                FontSheetPixel.Blue = Color.Blue;
 
                 memcpy_s((PIXEL32*)StringBitmap.Memory + StringBitmapOffset, sizeof(PIXEL32), &FontSheetPixel, sizeof(PIXEL32));
             }
@@ -1473,60 +1512,64 @@ void RednerFrameGraphics(void)
 #endif
 
 
-    BlitStringToBuffer("GAME OVER", &g6x7Font, 60, 60);
+    PIXEL32 Green = {0x00, 0xff, 0x00, 0xff};
+
     Blit32BppBitmapToBuffer(&gPlayer.Sprite[gPlayer.CurrentArmor][gPlayer.Direction + gPlayer.SpriteIndex], gPlayer.ScreenPosX, gPlayer.ScreenPosY);
 
+
+    if (gPerformanceData.DisplayDegubInfo)
+    {
+        DrawDebugInfo();
+    }
 
     HDC DeviceContext = GetDC(gGameWindow);
 
     StretchDIBits(DeviceContext, 0, 0, gPerformanceData.MonitorWidth, gPerformanceData.MonitorHeight, 0, 0, GAME_RES_WIDTH, GAME_RES_HEIGHT, gBackBuffer.Memory, &gBackBuffer.Bitmapinfo, DIB_RGB_COLORS, SRCCOPY);
 
-    if (gPerformanceData.DisplayDegubInfo)
-    {
-        SelectObject(DeviceContext, (HFONT)GetStockObject(ANSI_FIXED_FONT));
+        //SelectObject(DeviceContext, (HFONT)GetStockObject(ANSI_FIXED_FONT));
 
-        char DebugTextBuffer[64] = { 0 };
+        //char DebugTextBuffer[64] = { 0 };
 
-        sprintf_s(DebugTextBuffer, sizeof(DebugTextBuffer), "FPS Raw:       %.1f", gPerformanceData.RawFPSAverage); // _count of returns the number of characters, "places"
+        //sprintf_s(DebugTextBuffer, sizeof(DebugTextBuffer), "FPS Raw:       %.1f", gPerformanceData.RawFPSAverage); // _count of returns the number of characters, "places"
 
-        TextOutA(DeviceContext, 0, 0, DebugTextBuffer, (int)strlen(DebugTextBuffer));
+        //TextOutA(DeviceContext, 0, 0, DebugTextBuffer, (int)strlen(DebugTextBuffer));
 
-        sprintf_s(DebugTextBuffer, sizeof(DebugTextBuffer), "FPS Coocked:    %.1f", gPerformanceData.CoockedFPSAverage); // _count of returns the number of characters, "places"
+        //sprintf_s(DebugTextBuffer, sizeof(DebugTextBuffer), "FPS Coocked:    %.1f", gPerformanceData.CoockedFPSAverage); // _count of returns the number of characters, "places"
 
-        TextOutA(DeviceContext, 0, 12, DebugTextBuffer, (int)strlen(DebugTextBuffer));
+        //TextOutA(DeviceContext, 0, 12, DebugTextBuffer, (int)strlen(DebugTextBuffer));
 
-        sprintf_s(DebugTextBuffer, sizeof(DebugTextBuffer), "Min Timer Resolution: %.1f", gPerformanceData.MinimumTimerResolution / 10000.f); // _count of returns the number of characters, "places"
+        //sprintf_s(DebugTextBuffer, sizeof(DebugTextBuffer), "Min Timer Resolution: %.1f", gPerformanceData.MinimumTimerResolution / 10000.f); // _count of returns the number of characters, "places"
 
-        TextOutA(DeviceContext, 0, 24, DebugTextBuffer, (int)strlen(DebugTextBuffer));
+        //TextOutA(DeviceContext, 0, 24, DebugTextBuffer, (int)strlen(DebugTextBuffer));
 
-        sprintf_s(DebugTextBuffer, sizeof(DebugTextBuffer), "Max Timer Resolution:  %.1f", gPerformanceData.MaximumTimerResolution / 10000.f); // _count of returns the number of characters, "places"
+        //sprintf_s(DebugTextBuffer, sizeof(DebugTextBuffer), "Max Timer Resolution:  %.1f", gPerformanceData.MaximumTimerResolution / 10000.f); // _count of returns the number of characters, "places"
 
-        TextOutA(DeviceContext, 0, 36, DebugTextBuffer, (int)strlen(DebugTextBuffer));
+        //TextOutA(DeviceContext, 0, 36, DebugTextBuffer, (int)strlen(DebugTextBuffer));
 
-        sprintf_s(DebugTextBuffer, sizeof(DebugTextBuffer), "Cur Timer Resolution:  %.1f", gPerformanceData.CurrentTimerResolution / 10000.f); // _count of returns the number of characters, "places"
+        //sprintf_s(DebugTextBuffer, sizeof(DebugTextBuffer), "Cur Timer Resolution:  %.1f", gPerformanceData.CurrentTimerResolution / 10000.f); // _count of returns the number of characters, "places"
 
-        TextOutA(DeviceContext, 0, 48, DebugTextBuffer, (int)strlen(DebugTextBuffer));
+        //TextOutA(DeviceContext, 0, 48, DebugTextBuffer, (int)strlen(DebugTextBuffer));
     
-        sprintf_s(DebugTextBuffer, sizeof(DebugTextBuffer),"Handles: %lu", gPerformanceData.HandleCount); // _count of returns the number of characters, "places"
+        //sprintf_s(DebugTextBuffer, sizeof(DebugTextBuffer),"Handles: %lu", gPerformanceData.HandleCount); // _count of returns the number of characters, "places"
    
-        TextOutA(DeviceContext, 0, 60, DebugTextBuffer, (int)strlen(DebugTextBuffer));
+        //TextOutA(DeviceContext, 0, 60, DebugTextBuffer, (int)strlen(DebugTextBuffer));
     
-        sprintf_s(DebugTextBuffer, sizeof(DebugTextBuffer), "Memory: %lu KB", gPerformanceData.MemInfo.PrivateUsage / 1024); // _count of returns the number of characters, "places"
+        //sprintf_s(DebugTextBuffer, sizeof(DebugTextBuffer), "Memory: %lu KB", gPerformanceData.MemInfo.PrivateUsage / 1024); // _count of returns the number of characters, "places"
 
-        TextOutA(DeviceContext, 0, 72, DebugTextBuffer, (int)strlen(DebugTextBuffer));
+        //TextOutA(DeviceContext, 0, 72, DebugTextBuffer, (int)strlen(DebugTextBuffer));
     
-        sprintf_s(DebugTextBuffer, sizeof(DebugTextBuffer), "CPU: %.3f %%", gPerformanceData.CPUPercent); // _count of returns the number of characters, "places"
+        //sprintf_s(DebugTextBuffer, sizeof(DebugTextBuffer), "CPU: %.3f %%", gPerformanceData.CPUPercent); // _count of returns the number of characters, "places"
 
-        TextOutA(DeviceContext, 0, 84, DebugTextBuffer, (int)strlen(DebugTextBuffer));
+        //TextOutA(DeviceContext, 0, 84, DebugTextBuffer, (int)strlen(DebugTextBuffer));
     
-        sprintf_s(DebugTextBuffer, sizeof(DebugTextBuffer), "Total Frames: %llu", gPerformanceData.TotalFramesRednered); // _count of returns the number of characters, "places"
+        //sprintf_s(DebugTextBuffer, sizeof(DebugTextBuffer), "Total Frames: %llu", gPerformanceData.TotalFramesRednered); // _count of returns the number of characters, "places"
 
-        TextOutA(DeviceContext, 0, 96, DebugTextBuffer, (int)strlen(DebugTextBuffer));
+        //TextOutA(DeviceContext, 0, 96, DebugTextBuffer, (int)strlen(DebugTextBuffer));
     
-        sprintf_s(DebugTextBuffer, sizeof(DebugTextBuffer), "Screen Pos: (%d, %d)", gPlayer.ScreenPosX, gPlayer.ScreenPosY); // _count of returns the number of characters, "places"
+        //sprintf_s(DebugTextBuffer, sizeof(DebugTextBuffer), "Screen Pos: (%d, %d)", gPlayer.ScreenPosX, gPlayer.ScreenPosY); // _count of returns the number of characters, "places"
 
-        TextOutA(DeviceContext, 0, 108, DebugTextBuffer, (int)strlen(DebugTextBuffer));
-    }
+        //TextOutA(DeviceContext, 0, 108, DebugTextBuffer, (int)strlen(DebugTextBuffer));
+    
 
     ReleaseDC(gGameWindow, DeviceContext);
 }
@@ -1548,4 +1591,211 @@ void ClearScreen(_In_ PIXEL32* Pixel)
     }
 }
 #endif
+
+DWORD LoadRegistryParameters(void)
+{
+    DWORD Result = ERROR_SUCCESS;
+
+    HKEY RegKey = NULL;
+
+    DWORD RegDisposition = 0;
+
+    DWORD RegBytesRead = sizeof(DWORD);
+
+    Result = RegCreateKeyExA(HKEY_CURRENT_USER, "SOFTWARE\\" GAME_NAME, 0, NULL, 0, KEY_READ, NULL, &RegKey, &RegDisposition);
+
+    if (Result != ERROR_SUCCESS)
+    {
+        LogMessageA(Error, "[%s] RegCreateKey failed with error code 0x%08lx!", __FUNCTION__, Result);
+
+        goto Exit;
+    }
+
+    if (RegDisposition == REG_CREATED_NEW_KEY)
+    {
+        LogMessageA(Informational, "[%s] Registry key did not exist; created new key HKCU\\SOFTWARE\\%s.", __FUNCTION__, GAME_NAME);
+    }
+    else
+    {
+        LogMessageA(Informational, "[%s] Opened existing registry key HCKU\\SOFTWARE\\%s", __FUNCTION__, GAME_NAME);
+    }
+
+    Result = RegGetValueA(RegKey, NULL, "LogLevel", RRF_RT_DWORD, NULL, (BYTE*)&gRegistryParams.LogLevel, &RegBytesRead);
+
+    if (Result != ERROR_SUCCESS)
+    {
+        if (Result == ERROR_FILE_NOT_FOUND)
+        {
+            Result = ERROR_SUCCESS;
+
+            LogMessageA(Informational, "[%s] Registry value 'LogLevel' not found. Using default of 0. (LOG_LEVEL_NONE)", __FUNCTION__);
+
+            gRegistryParams.LogLevel = None;
+        }
+        else
+        {
+            LogMessageA(Error, "[%s] Failed to read the 'LogLevel' registry value! Error 0x%08lx!", __FUNCTION__, Result);
+
+            goto Exit;
+        }
+    }
+
+    LogMessageA(Informational, "[% s] LogLevel is %d", __FUNCTION__, gRegistryParams.LogLevel);
+
+Exit:
+
+    if (RegKey)
+    {
+        RegCloseKey(RegKey);
+    }
+
+    return Result;
+}
+
+
+void LogMessageA(_In_ DWORD LogLevel, _In_ char* Message, _In_ ...) 
+{
+    size_t MessageLength = strlen(Message);
+
+    SYSTEMTIME Time = { 0 };
+
+    HANDLE LogFileHandle = INVALID_HANDLE_VALUE;
+
+    DWORD EndOfFile = 0;
+
+    DWORD NumberOfyBytesWritten = 0;
+
+    char DateTimeString[96] = { 0 };
+
+    char SeverityString[8] = { 0 };
+
+    char FormattedString[4096] = { 0 };
+
+    if (gRegistryParams.LogLevel < (DWORD)LogLevel)
+    {
+        return;
+    }
+    
+    if (MessageLength < 1 || MessageLength > 4096)
+    {
+        // assert?
+
+        return;
+    }
+
+    switch (LogLevel)
+    {
+    case (None):
+        {
+            return;
+        }
+        case(Informational):
+        {
+            strcpy_s(SeverityString, sizeof(SeverityString), "[INFO]");
+        
+            break;
+        }
+        case (Warning):
+        {
+            strcpy_s(SeverityString, sizeof(SeverityString), "[WARN]");
+        
+            break;
+        }
+        case (Error):
+        {
+            strcpy_s(SeverityString, sizeof(SeverityString), "[ERROR]");
+
+            break;
+        }
+        case (Debug):
+        {
+            strcpy_s(SeverityString, sizeof(SeverityString), "[DEBUG]");
+            
+            break;
+        }
+        default:
+        {
+            ASSERT(FALSE);
+        }
+    }
+
+    GetLocalTime(&Time);
+
+    va_list ArgPointer = NULL;
+
+    va_start(ArgPointer, Message);
+
+    _vsnprintf_s(FormattedString, sizeof(FormattedString), _TRUNCATE, Message, ArgPointer);
+
+    va_end(ArgPointer);
+
+    _snprintf_s(DateTimeString, sizeof(DateTimeString), _TRUNCATE, "\r\n[%02u/%02u/%u %02u:%02u:%02u.%03u]", Time.wMonth, Time.wDay, Time.wYear, Time.wHour, Time.wMinute, Time.wSecond, Time.wMilliseconds);
+
+    if ((LogFileHandle = CreateFileA(LOG_FILE_NAME, FILE_APPEND_DATA, FILE_SHARE_READ, NULL, OPEN_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL)) == INVALID_HANDLE_VALUE)
+    {
+        // assert?
+
+        return;
+    }
+
+    EndOfFile = SetFilePointer(LogFileHandle, 0, NULL, FILE_END);
+
+    WriteFile(LogFileHandle, DateTimeString, (DWORD)strlen(DateTimeString), &NumberOfyBytesWritten, NULL);
+
+    WriteFile(LogFileHandle, SeverityString, (DWORD)strlen(SeverityString), &NumberOfyBytesWritten, NULL);
+
+    WriteFile(LogFileHandle, FormattedString, (DWORD)strlen(FormattedString), &NumberOfyBytesWritten, NULL);
+    
+    if (LogFileHandle != INVALID_HANDLE_VALUE)
+    {
+        CloseHandle(LogFileHandle);
+    }
+}
+
+void DrawDebugInfo()
+{
+    char DebugTextBuffer[64] = { 0 };
+
+    PIXEL32 White = { 0xFF, 0xFF, 0xFF, 0xFF };
+
+    sprintf_s(DebugTextBuffer, sizeof(DebugTextBuffer), "FPS Raw:     %.1f", gPerformanceData.RawFPSAverage); // _count of returns the number of characters, "places"
+
+    BlitStringToBuffer(DebugTextBuffer, &g6x7Font, White, 0, 0);
+
+    sprintf_s(DebugTextBuffer, sizeof(DebugTextBuffer), "FPS Coocked: %.1f", gPerformanceData.CoockedFPSAverage); // _count of returns the number of characters, "places"
+
+    BlitStringToBuffer(DebugTextBuffer, &g6x7Font, White,  0, 8);
+
+    sprintf_s(DebugTextBuffer, sizeof(DebugTextBuffer), "Min Timer:   %.1f", gPerformanceData.MinimumTimerResolution / 10000.f); // _count of returns the number of characters, "places"
+
+    BlitStringToBuffer(DebugTextBuffer, &g6x7Font, White, 0, 16);
+
+    sprintf_s(DebugTextBuffer, sizeof(DebugTextBuffer), "Max Timer:   %.1f", gPerformanceData.MaximumTimerResolution / 10000.f); // _count of returns the number of characters, "places"
+
+    BlitStringToBuffer(DebugTextBuffer, &g6x7Font, White, 0, 24);
+
+    sprintf_s(DebugTextBuffer, sizeof(DebugTextBuffer), "Cur Timer:   %.1f", gPerformanceData.CurrentTimerResolution / 10000.f); // _count of returns the number of characters, "places"
+
+    BlitStringToBuffer(DebugTextBuffer, &g6x7Font, White, 0, 32);
+
+    sprintf_s(DebugTextBuffer, sizeof(DebugTextBuffer), "Handles:     %lu", gPerformanceData.HandleCount); // _count of returns the number of characters, "places"
+
+    BlitStringToBuffer(DebugTextBuffer, &g6x7Font, White, 0,40);
+
+    sprintf_s(DebugTextBuffer, sizeof(DebugTextBuffer), "Memory:      %lu KB", gPerformanceData.MemInfo.PrivateUsage / 1024); // _count of returns the number of characters, "places"
+
+    BlitStringToBuffer(DebugTextBuffer, &g6x7Font, White, 0, 48);
+
+    sprintf_s(DebugTextBuffer, sizeof(DebugTextBuffer), "CPU:         %.3f %%", gPerformanceData.CPUPercent); // _count of returns the number of characters, "places"
+
+    BlitStringToBuffer(DebugTextBuffer, &g6x7Font, White, 0, 56);
+
+    sprintf_s(DebugTextBuffer, sizeof(DebugTextBuffer), "Total Frames:%llu", gPerformanceData.TotalFramesRednered); // _count of returns the number of characters, "places"
+
+    BlitStringToBuffer(DebugTextBuffer, &g6x7Font, White, 0, 64);
+
+    sprintf_s(DebugTextBuffer, sizeof(DebugTextBuffer), "Screen Pos:  (%d, %d)", gPlayer.ScreenPosX, gPlayer.ScreenPosY); // _count of returns the number of characters, "places"
+
+    BlitStringToBuffer(DebugTextBuffer, &g6x7Font, White, 0, 72);
+}
 

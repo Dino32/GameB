@@ -4,6 +4,10 @@
 
 #pragma warning(disable: 5045)
 
+#define ASSERT(Expression) if (!(Expression)) { *(int*)0 = 0; }; // crashing the game 
+
+#define GAME_NAME "GAMEB"
+
 #define SIMD
 
 #define SUIT_0 0
@@ -47,6 +51,22 @@
 #define DIRECTION_UP 9
 
 #define FONT_SHEET_CHARACTERS_PER_ROW 98
+
+
+typedef enum LOGLEVEL
+{
+	None = 0,
+
+	Error = 1,
+
+	Warning = 2,
+
+	Informational = 3,
+
+	Debug = 4,
+} LOGLEVEL;
+
+#define LOG_FILE_NAME "GAMEB.log"
 
 
 typedef LONG(NTAPI* _NtQueryTimerResolution) (OUT PULONG MinimumResolution, OUT PULONG MaximumResolution, OUT PULONG CurrentResolution);
@@ -138,6 +158,11 @@ typedef struct HERO
 
 } HERO;
 
+typedef struct REGISTRYPARAMS
+{
+	DWORD LogLevel;
+} REGISTRYPARAMS;
+
 INT __stdcall WinMain(HINSTANCE Instance, HINSTANCE PreviousInstance, PSTR CommandLine, INT CommandShow);
 
 LRESULT CALLBACK MainWndowProc(_In_ HWND WindowHandle, _In_ UINT Message, _In_ WPARAM wParam, _In_ LPARAM lParam);
@@ -156,7 +181,13 @@ DWORD InitializeHero(void);
 
 void Blit32BppBitmapToBuffer(_In_ GAMEBITMAP* GameBitmap, _In_ uint16_t x, _In_ uint16_t y);
 
-void BlitStringToBuffer(_In_ char* String, _In_ GAMEBITMAP* GameBitmap, _In_ uint16_t x, _In_ uint16_t y);
+void BlitStringToBuffer(_In_ char* String, _In_ GAMEBITMAP* FontSheet, _In_ PIXEL32 Color, _In_ uint16_t x, _In_ uint16_t y);
+
+DWORD LoadRegistryParameters(void);
+
+void LogMessageA(_In_ DWORD LogLevel, _In_ char* Message, _In_ ...);
+
+void DrawDebugInfo(void);
 
 #ifdef SIMD
 void ClearScreen(_In_ __m128i* Color);
