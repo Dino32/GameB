@@ -87,7 +87,9 @@ typedef enum GAMESATE
 
 	GAMESTATE_BATTLE,
 
-	GAMESATTE_OPTIONSSCREEN,
+	GAMESTATE_OPTIONSSCREEN,
+
+	GAMESTATE_CHARACTERNAMING,
 
 	GAMESTATE_EXITYESNOSCREEN
 
@@ -181,6 +183,8 @@ typedef struct GAMEINPUT
 
 	int16_t DownKeyIsDown;
 
+	int16_t ChooseKeyIsDown;
+
 	int16_t DebugKeyWasDown;
 
 	int16_t LeftKeyWasDown;
@@ -190,6 +194,8 @@ typedef struct GAMEINPUT
 	int16_t UpKeyWasDown;
 
 	int16_t DownKeyWasDown;
+
+	int16_t ChooseKeyWasDown;
 
 } GAMEINPUT;
 
@@ -252,16 +258,6 @@ void DrawDebugInfo(void);
 
 void FindFirstConnctedGamepad(void);
 
-void DrawOpeningSplashScreen(void);
-
-void DrawTitleScreen(void);
-
-void PPI_OpeningSplasheScreen(void);
-
-void PPI_TitleScreen(void);
-
-void PPI_Overworld(void);
-
 HRESULT InitializeSoundEngine(void);
 
 DWORD LoadWaveFromFile(_In_ char* FileName , _Inout_ GAMESOUND* GameSound);
@@ -273,3 +269,17 @@ void ClearScreen(_In_ __m128i* Color);
 #else
 void ClearScreen(_In_ PIXEL32* Pixel);
 #endif
+
+void DrawOpeningSplashScreen(void);
+
+void DrawTitleScreen(void);
+
+void DrawExitYesNoExitScreen();
+
+void PPI_OpeningSplasheScreen(void);
+
+void PPI_TitleScreen(void);
+
+void PPI_Overworld(void);
+
+void PPI_ExitYesNo(void);
