@@ -4,9 +4,18 @@
 
 #pragma warning(disable: 5045)
 
-#define ASSERT(Expression) if (!(Expression)) { *(int*)0 = 0; }; // crashing the game 
+#ifdef _DEBUG
+	#define ASSERT(Expression, Message) if (!(Expression)) { *(int*)0 = 0; }; // crashing the game 
+#else
+	#define ASSERT(Expression, Message) ((void)0);
+#endif
+#define GAME_NAME "Game_B"
 
-#define GAME_NAME "GAMEB"
+#define GAME_RES_WIDTH   384
+
+#define GAME_RES_HEIGHT   240
+
+#define GAME_VER "0.9a"
 
 #define SIMD
 
@@ -52,6 +61,8 @@
 
 #define FONT_SHEET_CHARACTERS_PER_ROW 98
 
+#define NUMBER_OF_SFX_SOURCE_VOICES 4
+
 
 typedef enum LOGLEVEL
 {
@@ -65,6 +76,22 @@ typedef enum LOGLEVEL
 
 	Debug = 4,
 } LOGLEVEL;
+
+typedef enum GAMESATE
+{
+	GAMESTATE_OPENINGSPLASHSCREEN,
+
+	GAMESTATE_TITLESCREEN,
+
+	GAMESTATE_OVERWORLD,
+
+	GAMESTATE_BATTLE,
+
+	GAMESATTE_OPTIONSSCREEN,
+
+	GAMESTATE_EXITYESNOSCREEN
+
+} GAMESTATE;
 
 #define LOG_FILE_NAME "GAMEB.log"
 
@@ -80,6 +107,14 @@ typedef struct GAMEBITMAP
 	void* Memory;
 
 } GAMEBITMAP;
+
+typedef struct GAMESOUND
+{
+	WAVEFORMATEX WaveFormat;
+
+	XAUDIO2_BUFFER Buffer;
+
+} GAMESOUND;
 
 typedef struct PIXEL32 
 {
@@ -131,6 +166,32 @@ typedef struct GAMEPERFDATA
 	double CPUPercent;
 
 } GAMEPERFDATA;
+
+typedef struct GAMEINPUT
+{
+	int16_t EscapeKeyIsDown;
+
+	int16_t DebugKeyIsDown;
+
+	int16_t LeftKeyIsDown;
+
+	int16_t RightKeyIsDown;
+
+	int16_t UpKeyIsDown;
+
+	int16_t DownKeyIsDown;
+
+	int16_t DebugKeyWasDown;
+
+	int16_t LeftKeyWasDown;
+
+	int16_t RightKeyWasDown;
+
+	int16_t UpKeyWasDown;
+
+	int16_t DownKeyWasDown;
+
+} GAMEINPUT;
 
 typedef struct HERO
 {
@@ -188,6 +249,24 @@ DWORD LoadRegistryParameters(void);
 void LogMessageA(_In_ DWORD LogLevel, _In_ char* Message, _In_ ...);
 
 void DrawDebugInfo(void);
+
+void FindFirstConnctedGamepad(void);
+
+void DrawOpeningSplashScreen(void);
+
+void DrawTitleScreen(void);
+
+void PPI_OpeningSplasheScreen(void);
+
+void PPI_TitleScreen(void);
+
+void PPI_Overworld(void);
+
+HRESULT InitializeSoundEngine(void);
+
+DWORD LoadWaveFromFile(_In_ char* FileName , _Inout_ GAMESOUND* GameSound);
+
+void PlayGameSound(_In_ GAMESOUND* GameSound);
 
 #ifdef SIMD
 void ClearScreen(_In_ __m128i* Color);
