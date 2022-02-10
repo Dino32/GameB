@@ -37,7 +37,7 @@
 
 BOOL gGameIsRunning; // gloabal variable, its automatically initialized to zero (false)
 
-HWND gGameWindow;
+HWND gGameWindow; // Wheteher the player has started or loaded a game
 
 GAMEBITMAP gBackBuffer;
 
@@ -223,7 +223,7 @@ INT WINAPI WinMain(_In_ HINSTANCE Instance, _In_ HINSTANCE PreviousInstance,
 
     QueryPerformanceFrequency((LARGE_INTEGER*) & gPerformanceData.Perffrequency);
 
-    gPerformanceData.DisplayDegubInfo = TRUE;
+    gPerformanceData.DisplayDegubInfo = FALSE;
 
     gBackBuffer.Bitmapinfo.bmiHeader.biSize = sizeof(gBackBuffer.Bitmapinfo.bmiHeader);
     gBackBuffer.Bitmapinfo.bmiHeader.biWidth = GAME_RES_WIDTH;
@@ -506,6 +506,18 @@ void ProcessPlayerInput(void)
         
             gGameInput.ChooseKeyIsDown |= gGamepadState.Gamepad.wButtons & XINPUT_GAMEPAD_A;
         }
+        else 
+        {
+            // Gamepad Unplugged
+
+            gGamepadID = -1;
+
+            gPreviousGameState = gCurrentGameState;
+        
+            gCurrentGameState = GAMESTATE_GAMEPADUNPLUGGED;
+
+            gGameInput.EscapeKeyWasDown = gGameInput.EscapeKeyIsDown;
+        }
     }
 
     switch (gCurrentGameState)
@@ -547,6 +559,13 @@ void ProcessPlayerInput(void)
         }
         case GAMESTATE_OPTIONSSCREEN:
         {
+            PPI_OptionsScreen();
+            
+            break;
+        }
+        case GAMESTATE_GAMEPADUNPLUGGED:
+        {
+            PPI_GamepadUnplugged();
             
             break;
         }
@@ -1535,7 +1554,12 @@ void RednerFrameGraphics(void)
 
             break;
         }
+        case GAMESTATE_GAMEPADUNPLUGGED:
+        {
+            DrawGamepadUnplugged();
 
+            break;
+        }
         case GAMESTATE_TITLESCREEN:
         {
             DrawTitleScreen();
@@ -1565,6 +1589,7 @@ void RednerFrameGraphics(void)
         }
         case GAMESTATE_OPTIONSSCREEN:
         {
+            DrawOptionsScreen();
             
             break;
         }
@@ -1780,10 +1805,7 @@ void LogMessageA(_In_ DWORD LogLevel, _In_ char* Message, _In_ ...)
 
 void DrawDebugInfo()
 {
-    if (gCurrentGameState != GAMESTATE_OVERWORLD)
-    {
-        return;
-    }
+    
 
     char DebugTextBuffer[64] = { 0 };
 
@@ -1857,7 +1879,9 @@ void MenuItem_TitleScree_StartNew(void)
 
 void MenuItem_TitleScree_Options(void)
 {
-    
+    gPreviousGameState = gCurrentGameState;
+
+    gCurrentGameState = GAMESTATE_OPTIONSSCREEN;
 }
 
 void MenuItem_TitleScree_Exit(void)
@@ -1880,6 +1904,104 @@ void MenuItem_ExitYesNo_No(void)
         
 }
 
+void MenuItem_OptionsScreen_SFXVolume(void)
+{
+    gSFXVolume += 0.1f;
+
+    if ((uint8_t)(gSFXVolume * 10) > 10)
+    {
+        gSFXVolume = 0.f;
+    }
+
+    for (uint8_t Counter = 0; Counter < NUMBER_OF_SFX_SOURCE_VOICES; Counter++)
+    {
+        gXAudioSFXSorceVoice[Counter]->lpVtbl->SetVolume(gXAudioSFXSorceVoice[Counter], gSFXVolume, XAUDIO2_COMMIT_NOW);
+    }
+}
+
+void MenuItem_OptionsScreen_MusicVolume(void)
+{
+    gMusicVolume += 0.1f;
+
+    if ((uint8_t)(gMusicVolume * 10) > 10)
+    {
+        gMusicVolume = 0.f;
+    }
+
+    gXAudioMusicSourceVoice->lpVtbl->SetVolume(gXAudioMusicSourceVoice, gMusicVolume, XAUDIO2_COMMIT_NOW);
+}
+
+void MenuItem_OptionsScreen_ScreenSize(void)
+{
+
+}
+
+void MenuItem_OptionsScreen_Back(void)
+{
+    gPreviousGameState = gCurrentGameState;
+
+    gCurrentGameState = GAMESTATE_TITLESCREEN;
+}
+
+void DrawOptionsScreen(void)
+{
+    PIXEL32 White = { 0xff, 0xff, 0xff, 0xff };
+
+    PIXEL32 Gray = { 0x6f, 0x6f, 0x6f, 0x6f };
+
+    static uint64_t LocalFrameCounter;
+
+    static uint64_t LastFrameSeen;
+
+    memset(gBackBuffer.Memory, 0, GAME_DRAWING_AREA_MEMORY_SIZE);
+
+    if (gPerformanceData.TotalFramesRednered > (LastFrameSeen + 1))
+    {
+        gMenu_OptionsScreen.SelectedItem = 0;
+    }
+
+    for (uint8_t MenuItem = 0; MenuItem < gMenu_OptionsScreen.ItemCount; MenuItem++)
+    {
+        if (gMenu_OptionsScreen.Items[MenuItem]->Enabled == TRUE)
+        {
+            BlitStringToBuffer(gMenu_OptionsScreen.Items[MenuItem]->Name, &g6x7Font, White, gMenu_OptionsScreen.Items[MenuItem]->x, gMenu_OptionsScreen.Items[MenuItem]->y);
+        }
+    }
+
+    for (uint8_t Volume = 0; Volume < 10; Volume++)
+    {
+        if (Volume >= (uint8_t)(gSFXVolume * 10))
+        {
+            BlitStringToBuffer("\xf2", &g6x7Font, Gray, 240 + (Volume*6), 100);
+        }
+        else
+        {
+            BlitStringToBuffer("\xf2", &g6x7Font, White, 240 + (Volume * 6), 100);
+
+        }
+    }
+
+    for (uint8_t Volume = 0; Volume < 10; Volume++)
+    {
+        if (Volume >= (uint8_t)(gMusicVolume * 10))
+        {
+            BlitStringToBuffer("\xf2", &g6x7Font, Gray, 240 + (Volume * 6), 120);
+        }
+        else
+        {
+            BlitStringToBuffer("\xf2", &g6x7Font, White, 240 + (Volume * 6), 120);
+
+        }
+    }
+
+    BlitStringToBuffer("\xbb", &g6x7Font, White, gMenu_OptionsScreen.Items[gMenu_OptionsScreen.SelectedItem]->x - 6, gMenu_OptionsScreen.Items[gMenu_OptionsScreen.SelectedItem]->y);
+
+
+    LocalFrameCounter++;
+
+    LastFrameSeen = gPerformanceData.TotalFramesRednered;
+}
+
 void DrawExitYesNoExitScreen()
 {
     PIXEL32 White = { 0xff, 0xff, 0xff, 0xff};
@@ -1899,6 +2021,23 @@ void DrawExitYesNoExitScreen()
     BlitStringToBuffer("\xbb", &g6x7Font, White, gMenu_ExitYesNo.Items[gMenu_ExitYesNo.SelectedItem]->x - 6, gMenu_ExitYesNo.Items[gMenu_ExitYesNo.SelectedItem]->y);
 }
 
+
+void DrawGamepadUnplugged(void)
+{
+#define GAMEPADUNPLUGGEDSTRING1 "Gamepad Dinsconnected"
+
+#define GAMEPADUNPLUGGEDSTRING2 "Reconnect it, or press escape to continue using the keyboard."
+
+    PIXEL32 White = { 0xff, 0xff, 0xff, 0xff };
+
+    memset(gBackBuffer.Memory, 0, GAME_DRAWING_AREA_MEMORY_SIZE);
+
+    BlitStringToBuffer(GAMEPADUNPLUGGEDSTRING1, &g6x7Font, White, (GAME_RES_WIDTH/2)-((strlen(GAMEPADUNPLUGGEDSTRING1) *6) /2), 100);
+
+    BlitStringToBuffer(GAMEPADUNPLUGGEDSTRING2, &g6x7Font, White, (GAME_RES_WIDTH / 2) - ((strlen(GAMEPADUNPLUGGEDSTRING2)*6) / 2), 120);
+
+}
+
 void DrawOpeningSplashScreen(void)
 {
 
@@ -1912,17 +2051,36 @@ void DrawTitleScreen(void)
 
     static uint64_t LastFrameSeen;
 
+    if (gPerformanceData.TotalFramesRednered > (LastFrameSeen + 1))
+    {
+        if (gPlayer.Active)
+        {
+            gMenu_TitleScreen.SelectedItem = 0;
+        }
+        else 
+        {
+            gMenu_TitleScreen.SelectedItem = 1;
+        }
+    }
+
     memset(gBackBuffer.Memory, 0, GAME_DRAWING_AREA_MEMORY_SIZE);
 
     BlitStringToBuffer(GAME_NAME, &g6x7Font, White, (GAME_RES_WIDTH/2) - ((strlen(GAME_NAME) * 6)/2),  60);
 
     for (uint8_t MenuItem = 0; MenuItem < gMenu_TitleScreen.ItemCount; MenuItem++)
     {
-        BlitStringToBuffer(gMenu_TitleScreen.Items[MenuItem]->Name, &g6x7Font, White, gMenu_TitleScreen.Items[MenuItem]->x, gMenu_TitleScreen.Items[MenuItem]->y);
+        if (gMenu_TitleScreen.Items[MenuItem]->Enabled == TRUE)
+        {
+           BlitStringToBuffer(gMenu_TitleScreen.Items[MenuItem]->Name, &g6x7Font, White, gMenu_TitleScreen.Items[MenuItem]->x, gMenu_TitleScreen.Items[MenuItem]->y);   
+        }
     }
 
     BlitStringToBuffer("\xbb", &g6x7Font, White, gMenu_TitleScreen.Items[gMenu_TitleScreen.SelectedItem]->x - 6, gMenu_TitleScreen.Items[gMenu_TitleScreen.SelectedItem]->y);
 
+
+    LocalFrameCounter++;
+
+    LastFrameSeen = gPerformanceData.TotalFramesRednered;
 }
 
 void PPI_OpeningSplasheScreen(void)
@@ -1932,11 +2090,6 @@ void PPI_OpeningSplasheScreen(void)
 
 void PPI_TitleScreen(void)
 {
-    //if (gGameInput.EscapeKeyIsDown)
-    //{
-    //  SendMessageA(gGameWindow, WM_CLOSE, 0, 0);
-    //}
-
     if (gGameInput.DebugKeyIsDown && !gGameInput.DebugKeyWasDown)
     {
         gPerformanceData.DisplayDegubInfo = !gPerformanceData.DisplayDegubInfo;
@@ -1956,9 +2109,21 @@ void PPI_TitleScreen(void)
     {
         if (gMenu_TitleScreen.SelectedItem > 0)
         {
-            gMenu_TitleScreen.SelectedItem--;
+            if (gMenu_TitleScreen.SelectedItem == 1)
+            {
+                if (gPlayer.Active)
+                {
+                    gMenu_TitleScreen.SelectedItem--;
 
-            PlayGameSound(&gMenuNavigate);
+                    PlayGameSound(&gMenuNavigate);
+                }
+            }
+            else
+            {
+                gMenu_TitleScreen.SelectedItem--;
+
+                PlayGameSound(&gMenuNavigate);
+            }
         }
     }
 
@@ -2113,6 +2278,53 @@ void PPI_ExitYesNo(void)
     if (gGameInput.ChooseKeyIsDown && !gGameInput.ChooseKeyWasDown)
     {
         gMenu_ExitYesNo.Items[gMenu_ExitYesNo.SelectedItem]->Action();
+
+        PlayGameSound(&gMenuChoose);
+    }
+}
+
+void PPI_GamepadUnplugged(void)
+{
+    if (gGamepadID > -1 || (gGameInput.EscapeKeyIsDown) && !gGameInput.EscapeKeyIsDown)
+    {
+        gCurrentGameState = gPreviousGameState;
+
+        gPreviousGameState = GAMESTATE_GAMEPADUNPLUGGED;
+    }
+    
+}
+
+void PPI_OptionsScreen(void)
+{
+    if (gGameInput.DebugKeyIsDown && !gGameInput.DebugKeyWasDown)
+    {
+        gPerformanceData.DisplayDegubInfo = !gPerformanceData.DisplayDegubInfo;
+    }
+
+    if (gGameInput.DownKeyIsDown && !gGameInput.DownKeyWasDown)
+    {
+        if (gMenu_OptionsScreen.SelectedItem < gMenu_OptionsScreen.ItemCount -1)
+        {
+            gMenu_OptionsScreen.SelectedItem++;
+
+            PlayGameSound(&gMenuNavigate);
+        }
+    }
+
+    if (gGameInput.UpKeyIsDown && !gGameInput.UpKeyWasDown)
+    {
+        if (gMenu_OptionsScreen.SelectedItem > 0)
+        {
+            gMenu_OptionsScreen.SelectedItem--;
+
+            PlayGameSound(&gMenuNavigate);
+        }
+    }
+
+    if (gGameInput.ChooseKeyIsDown && !gGameInput.ChooseKeyWasDown)
+    {
+
+        gMenu_OptionsScreen.Items[gMenu_OptionsScreen.SelectedItem]->Action();
 
         PlayGameSound(&gMenuChoose);
     }

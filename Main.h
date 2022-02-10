@@ -91,7 +91,9 @@ typedef enum GAMESATE
 
 	GAMESTATE_CHARACTERNAMING,
 
-	GAMESTATE_EXITYESNOSCREEN
+	GAMESTATE_EXITYESNOSCREEN,
+
+	GAMESTATE_GAMEPADUNPLUGGED
 
 } GAMESTATE;
 
@@ -185,6 +187,8 @@ typedef struct GAMEINPUT
 
 	int16_t ChooseKeyIsDown;
 
+	int16_t EscapeKeyWasDown;
+
 	int16_t DebugKeyWasDown;
 
 	int16_t LeftKeyWasDown;
@@ -222,6 +226,8 @@ typedef struct HERO
 	int32_t Strength;
 
 	int32_t MP; // Magic Power
+
+	BOOL Active;
 
 } HERO;
 
@@ -276,6 +282,10 @@ void DrawTitleScreen(void);
 
 void DrawExitYesNoExitScreen();
 
+void DrawGamepadUnplugged(void);
+
+void DrawOptionsScreen(void);
+
 void PPI_OpeningSplasheScreen(void);
 
 void PPI_TitleScreen(void);
@@ -283,3 +293,7 @@ void PPI_TitleScreen(void);
 void PPI_Overworld(void);
 
 void PPI_ExitYesNo(void);
+
+void PPI_GamepadUnplugged(void);
+
+void PPI_OptionsScreen(void);
