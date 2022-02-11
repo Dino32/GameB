@@ -143,9 +143,7 @@ typedef struct GAMEPERFDATA
 	
 	MONITORINFO MonitorInfo;
 
-	int32_t MonitorWidth;
 
-	int32_t MonitorHeight;
 
 	BOOL DisplayDegubInfo;
 
@@ -168,6 +166,10 @@ typedef struct GAMEPERFDATA
 	int64_t CurrentSystemTime;
 
 	double CPUPercent;
+	
+	uint8_t MaxScaleFactor;
+
+	uint8_t CurrentScaleFactor;
 
 } GAMEPERFDATA;
 
@@ -234,6 +236,13 @@ typedef struct HERO
 typedef struct REGISTRYPARAMS
 {
 	DWORD LogLevel;
+
+	DWORD SFXVolume;
+
+	DWORD MusicVolume;
+
+	DWORD ScaleFactor;
+
 } REGISTRYPARAMS;
 
 INT __stdcall WinMain(HINSTANCE Instance, HINSTANCE PreviousInstance, PSTR CommandLine, INT CommandShow);
@@ -257,6 +266,8 @@ void Blit32BppBitmapToBuffer(_In_ GAMEBITMAP* GameBitmap, _In_ uint16_t x, _In_ 
 void BlitStringToBuffer(_In_ char* String, _In_ GAMEBITMAP* FontSheet, _In_ PIXEL32 Color, _In_ uint16_t x, _In_ uint16_t y);
 
 DWORD LoadRegistryParameters(void);
+
+DWORD SaveRegistryParametars(void);
 
 void LogMessageA(_In_ DWORD LogLevel, _In_ char* Message, _In_ ...);
 
@@ -286,6 +297,8 @@ void DrawGamepadUnplugged(void);
 
 void DrawOptionsScreen(void);
 
+void DrawCharacterNaming(void);
+
 void PPI_OpeningSplasheScreen(void);
 
 void PPI_TitleScreen(void);
@@ -297,3 +310,5 @@ void PPI_ExitYesNo(void);
 void PPI_GamepadUnplugged(void);
 
 void PPI_OptionsScreen(void);
+
+void PPI_CharacterNaming(void);
