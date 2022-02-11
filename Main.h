@@ -219,7 +219,7 @@ typedef struct HERO
 
 	uint8_t SpriteIndex;
 
-	char Name[12];
+	char Name[9];
 
 	GAMEBITMAP Sprite[3][12];
 

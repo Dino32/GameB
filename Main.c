@@ -653,6 +653,8 @@ void ProcessPlayerInput(void)
     gGameInput.DownKeyWasDown = gGameInput.DownKeyIsDown;
 
     gGameInput.ChooseKeyWasDown = gGameInput.ChooseKeyIsDown;
+
+    gGameInput.EscapeKeyWasDown = gGameInput.EscapeKeyIsDown;
 }
 
 DWORD Load32BppBitmapFromFile(_In_ char* FileName, _Inout_ GAMEBITMAP* GameBitmap)
@@ -1641,6 +1643,7 @@ void RednerFrameGraphics(void)
         case GAMESTATE_OVERWORLD:
         {
             
+
             break;
         }
         case GAMESTATE_BATTLE:
@@ -2090,16 +2093,33 @@ void MenuItem_TitleScree_StartNew(void)
 void MenuItem_CharacterNaming_Add(void)
 {
 
+    if (strlen(gPlayer.Name) < 8)
+    {
+        gPlayer.Name[strlen(gPlayer.Name)] = gMenu_CharacterNaming.Items[gMenu_CharacterNaming.SelectedItem]->Name[0];
+    
+        PlayGameSound(&gSoundMenuChoose);
+    }
 }
 
 void MenuItem_CharacterNaming_Back(void)
 {
+    if (strlen(gPlayer.Name) < 1)
+    {
+        gPreviousGameState = gCurrentGameState;
 
+        gCurrentGameState = GAMESTATE_TITLESCREEN;
+    }
+    else
+    {
+        gPlayer.Name[strlen(gPlayer.Name) - 1] = '\0';
+    }
 }
 
 void MenuItem_CharacterNaming_OK(void)
 {
+    gPreviousGameState = gCurrentGameState;
 
+    gCurrentGameState = GAMESTATE_OVERWORLD;
 }
 
 void MenuItem_TitleScree_Options(void)
@@ -2211,7 +2231,7 @@ void DrawOptionsScreen(void)
 
     if (LocalFrameCounter >= 20)
     {
-        if (LocalFrameCounter % 10 == 0 && LocalFrameCounter < 90)
+        if (LocalFrameCounter % 10 == 0 && LocalFrameCounter < 80)
         {
             TextColor.Red += 32;
 
@@ -2220,7 +2240,7 @@ void DrawOptionsScreen(void)
             TextColor.Green += 32;
         }
 
-        if (LocalFrameCounter == 100)
+        if (LocalFrameCounter == 70)
         {
             TextColor.Red = 255;
 
@@ -2305,7 +2325,7 @@ void DrawExitYesNoExitScreen()
 
     if (LocalFrameCounter >= 20)
     {
-        if (LocalFrameCounter % 10 == 0 && LocalFrameCounter < 90)
+        if (LocalFrameCounter % 10 == 0 && LocalFrameCounter < 80)
         {
             TextColor.Red += 32;
 
@@ -2314,7 +2334,7 @@ void DrawExitYesNoExitScreen()
             TextColor.Green += 32;
         }
 
-        if (LocalFrameCounter == 100)
+        if (LocalFrameCounter == 70)
         {
             TextColor.Red = 255;
 
@@ -2363,7 +2383,7 @@ void DrawCharacterNaming(void)
 
     if (LocalFrameCounter >= 20)
     {
-        if (LocalFrameCounter % 10 == 0 && LocalFrameCounter < 90)
+        if (LocalFrameCounter % 10 == 0 && LocalFrameCounter < 80)
         {
             TextColor.Red += 32;
 
@@ -2372,7 +2392,7 @@ void DrawCharacterNaming(void)
             TextColor.Green += 32;
         }
 
-        if (LocalFrameCounter == 100)
+        if (LocalFrameCounter == 70)
         {
             TextColor.Red = 255;
 
@@ -2382,7 +2402,24 @@ void DrawCharacterNaming(void)
         }
     }
 
-    BlitStringToBuffer(gMenu_CharacterNaming.Name, &g6x7Font, TextColor, (GAME_RES_WIDTH / 2) - (strlen(gMenu_CharacterNaming.Name) * 6) / 2, 90);
+    BlitStringToBuffer(gMenu_CharacterNaming.Name, &g6x7Font, TextColor, (GAME_RES_WIDTH / 2) - (strlen(gMenu_CharacterNaming.Name) * 6) / 2, 30);
+
+    if (LocalFrameCounter >= 50)
+    {
+        Blit32BppBitmapToBuffer(&gPlayer.Sprite[SUIT_0][FACING_DOWN_0], 152, 62);
+    }
+
+    for (uint8_t Counter = 0; Counter < 8; Counter++)
+    {
+        if (gPlayer.Name[Counter] == '\0')
+        {
+            BlitStringToBuffer("_", &g6x7Font, TextColor, 170 + Counter*6, 65);
+        }
+        else
+        {
+            BlitStringToBuffer(&gPlayer.Name[Counter], &g6x7Font, TextColor, 170 + Counter * 6, 65);
+        }
+    }
 
     for (uint8_t Counter = 0; Counter < gMenu_CharacterNaming.ItemCount; Counter++)
     {
@@ -2445,7 +2482,7 @@ void DrawOpeningSplashScreen(void)
         }
 
 
-        if (LocalFrameCounter > 290)
+        if (LocalFrameCounter == 260)
         {
             gPreviousGameState = gCurrentGameState;
 
@@ -2502,7 +2539,7 @@ void DrawTitleScreen(void)
 
     if (LocalFrameCounter >= 20)
     {
-        if (LocalFrameCounter % 10 == 0 && LocalFrameCounter < 90)
+        if (LocalFrameCounter % 10 == 0 && LocalFrameCounter < 80)
         {
             TextColor.Red += 32;
 
@@ -2511,7 +2548,7 @@ void DrawTitleScreen(void)
             TextColor.Green += 32;
         }
 
-        if (LocalFrameCounter == 100)
+        if (LocalFrameCounter == 70)
         {
             TextColor.Red = 255;
 
@@ -2551,11 +2588,100 @@ void PPI_OpeningSplasheScreen(void)
 
 void PPI_CharacterNaming(void)
 {
+    if (gGameInput.UpKeyIsDown && !gGameInput.UpKeyWasDown)
+    {
+        if (gMenu_CharacterNaming.SelectedItem > 12)
+        {
+            gMenu_CharacterNaming.SelectedItem -= 13;
+        
+            PlayGameSound(&gSoundMenuNavigate);
+        }
 
+        else 
+        {
+            gMenu_CharacterNaming.SelectedItem = 52;
+
+            PlayGameSound(&gSoundMenuNavigate);
+        }
+    }
+
+    if (gGameInput.DownKeyIsDown && !gGameInput.DownKeyWasDown)
+    {
+        if (gMenu_CharacterNaming.SelectedItem < 39)
+        {
+            gMenu_CharacterNaming.SelectedItem += 13;
+
+            PlayGameSound(&gSoundMenuNavigate);
+        } 
+        else
+        {
+            gMenu_CharacterNaming.SelectedItem = 53;
+
+            PlayGameSound(&gSoundMenuNavigate);
+        }
+    }
+
+    if (gGameInput.LeftKeyIsDown && !gGameInput.LeftKeyWasDown)
+    {
+        if (gMenu_CharacterNaming.SelectedItem == 0 ||
+            gMenu_CharacterNaming.SelectedItem == 13 ||
+            gMenu_CharacterNaming.SelectedItem == 26 ||
+            gMenu_CharacterNaming.SelectedItem == 39)
+        {
+            gMenu_CharacterNaming.SelectedItem += 12;
+            PlayGameSound(&gSoundMenuNavigate);
+        }
+
+        else if (gMenu_CharacterNaming.SelectedItem > 0 && gMenu_CharacterNaming.SelectedItem != 52)
+        {
+            gMenu_CharacterNaming.SelectedItem--;
+
+            PlayGameSound(&gSoundMenuNavigate);
+        } 
+        else if (gMenu_CharacterNaming.SelectedItem == 52)
+        {
+            gMenu_CharacterNaming.SelectedItem++;
+        }
+    }
+
+    if (gGameInput.RightKeyIsDown && !gGameInput.RightKeyWasDown)
+    {
+        if (gMenu_CharacterNaming.SelectedItem == 12 ||
+            gMenu_CharacterNaming.SelectedItem == 25 ||
+            gMenu_CharacterNaming.SelectedItem == 38 ||
+            gMenu_CharacterNaming.SelectedItem == 51)
+        {
+            gMenu_CharacterNaming.SelectedItem -= 12;
+        }
+
+        else if (gMenu_CharacterNaming.SelectedItem < 53)
+          {
+            gMenu_CharacterNaming.SelectedItem++;
+
+        }
+        else if (gMenu_CharacterNaming.SelectedItem == 53)
+        {
+            gMenu_CharacterNaming.SelectedItem--;
+        }
+    }
+
+    if (gGameInput.ChooseKeyIsDown && !gGameInput.ChooseKeyWasDown)
+    {
+        gMenu_CharacterNaming.Items[gMenu_CharacterNaming.SelectedItem]->Action();
+
+        PlayGameSound(&gSoundMenuChoose);
+    }
+
+    if (gGameInput.EscapeKeyIsDown && !gGameInput.EscapeKeyWasDown)
+    {
+        MenuItem_CharacterNaming_Back();
+    }
 }
 
 void PPI_TitleScreen(void)
 {
+
+
     if (gGameInput.DownKeyIsDown && !gGameInput.DownKeyWasDown)
     {
         if (gMenu_TitleScreen.SelectedItem < gMenu_TitleScreen.ItemCount -1)
