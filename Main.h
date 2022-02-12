@@ -1,8 +1,39 @@
 #pragma once
 
-#pragma warning (disable: 4820)
+#pragma warning(push, 3)
 
-#pragma warning(disable: 5045)
+#include <windows.h>
+
+#include <xaudio2.h>  // Audio library
+
+#pragma comment(lib, "XAudio2.lib")
+
+#include <stdio.h>
+
+#include <stdint.h>
+
+#include <xinput.h>    // Xbox input library
+
+#pragma comment(lib, "XInput.lib")
+
+#include <Psapi.h>
+
+#pragma comment(lib, "Winmm.lib")
+
+#define AVX
+
+#ifdef AVX
+
+#include <immintrin.h>
+
+#elif defined SSE2
+
+#include <emmintrin.h>
+
+#endif
+
+#pragma warning(pop)
+
 
 #ifdef _DEBUG
 	#define ASSERT(Expression, Message) if (!(Expression)) { *(int*)0 = 0; }; // crashing the game 
@@ -16,6 +47,14 @@
 #define GAME_RES_HEIGHT   240
 
 #define GAME_VER "0.9a"
+
+#define GAME_BPP 32
+
+#define GAME_DRAWING_AREA_MEMORY_SIZE (GAME_RES_WIDTH  * GAME_RES_HEIGHT * (GAME_BPP  / 8))
+
+#define CALCULATE_AVG_FPS_EVERY_X_FRAMES 120
+
+#define TARGET_MICROSECONDS_PER_FRAME 16667ULL
 
 #define SIMD
 
@@ -100,9 +139,11 @@ typedef enum GAMESATE
 #define LOG_FILE_NAME "GAMEB.log"
 
 
+
 typedef LONG(NTAPI* _NtQueryTimerResolution) (OUT PULONG MinimumResolution, OUT PULONG MaximumResolution, OUT PULONG CurrentResolution);
 
 _NtQueryTimerResolution NtQueryTimerResolution;
+
 
 typedef struct GAMEBITMAP 
 {
@@ -205,11 +246,17 @@ typedef struct GAMEINPUT
 
 } GAMEINPUT;
 
+typedef struct UPOINT
+{
+	uint16_t x;
+
+	uint16_t y;
+
+} UPOINT;
+
 typedef struct HERO
 {
-	int32_t ScreenPosX;
-	
-	int32_t ScreenPosY;
+	UPOINT ScreenPos;
 
 	uint8_t MovementRemaining;
 
@@ -245,6 +292,102 @@ typedef struct REGISTRYPARAMS
 
 } REGISTRYPARAMS;
 
+typedef struct MENUITEM
+{
+	char* Name;
+
+	int16_t x;
+
+	int16_t y;
+
+	BOOL Enabled;
+
+	void(*Action)(void);
+
+} MENUITEM;
+
+typedef struct MENU
+{
+	char* Name;
+
+	uint8_t SelectedItem;
+
+	uint8_t ItemCount;
+
+	MENUITEM** Items;
+
+} MENU;
+
+typedef struct TILEMAP
+{
+	uint16_t Width;
+
+	uint16_t Height;
+	
+	uint8_t** Map;
+
+} TILEMAP;
+
+typedef struct GAMEMAP
+{
+	TILEMAP TIleMap;
+
+	GAMEBITMAP GameBitmap;
+
+} GAMEMAP;
+
+GAMEPERFDATA gPerformanceData;
+
+GAMEBITMAP gBackBuffer;
+
+GAMESTATE gCurrentGameState;
+
+GAMESTATE gPreviousGameState;
+
+GAMEINPUT gGameInput;
+
+GAMEBITMAP g6x7Font;
+
+GAMESOUND gSoundSplashScreen;
+
+GAMESOUND gSoundFadingScreen;
+
+HERO gPlayer;
+
+int8_t gGamepadID;
+
+GAMESOUND gSoundMenuNavigate;
+
+GAMESOUND gSoundMenuChoose;
+
+float gSFXVolume;
+
+float gMusicVolume;
+
+BOOL gGameIsRunning; // gloabal variable, its automatically initialized to zero (false)
+
+HWND gGameWindow; // Wheteher the player has started or loaded a game
+
+BOOL gWindowHasFocus;
+
+IXAudio2* gXAudio;
+
+IXAudio2MasteringVoice* gXAudioMasteringVoice;
+
+IXAudio2SourceVoice* gXAudioSFXSorceVoice[NUMBER_OF_SFX_SOURCE_VOICES];
+
+IXAudio2SourceVoice* gXAudioMusicSourceVoice;
+
+uint8_t gSFXSourceVoiceSelector;
+
+REGISTRYPARAMS gRegistryParams;
+
+XINPUT_STATE gGamepadState;
+
+GAMEMAP gOverWorld01;
+
+UPOINT gCamera;
+
 INT __stdcall WinMain(HINSTANCE Instance, HINSTANCE PreviousInstance, PSTR CommandLine, INT CommandShow);
 
 LRESULT CALLBACK MainWndowProc(_In_ HWND WindowHandle, _In_ UINT Message, _In_ WPARAM wParam, _In_ LPARAM lParam);
@@ -265,6 +408,8 @@ void Blit32BppBitmapToBuffer(_In_ GAMEBITMAP* GameBitmap, _In_ uint16_t x, _In_ 
 
 void BlitStringToBuffer(_In_ char* String, _In_ GAMEBITMAP* FontSheet, _In_ PIXEL32 Color, _In_ uint16_t x, _In_ uint16_t y);
 
+void BlitTileMapToBuffer(_In_ GAMEBITMAP* GameBitmap);
+
 DWORD LoadRegistryParameters(void);
 
 DWORD SaveRegistryParametars(void);
@@ -281,34 +426,12 @@ DWORD LoadWaveFromFile(_In_ char* FileName , _Inout_ GAMESOUND* GameSound);
 
 void PlayGameSound(_In_ GAMESOUND* GameSound);
 
+DWORD LoadTilemapFromFile(_In_ char* FileName, _Inout_ TILEMAP* TileMap);
+
 #ifdef SIMD
 void ClearScreen(_In_ __m128i* Color);
 #else
 void ClearScreen(_In_ PIXEL32* Pixel);
 #endif
 
-void DrawOpeningSplashScreen(void);
 
-void DrawTitleScreen(void);
-
-void DrawExitYesNoExitScreen();
-
-void DrawGamepadUnplugged(void);
-
-void DrawOptionsScreen(void);
-
-void DrawCharacterNaming(void);
-
-void PPI_OpeningSplasheScreen(void);
-
-void PPI_TitleScreen(void);
-
-void PPI_Overworld(void);
-
-void PPI_ExitYesNo(void);
-
-void PPI_GamepadUnplugged(void);
-
-void PPI_OptionsScreen(void);
-
-void PPI_CharacterNaming(void);

@@ -1,89 +1,4 @@
-#include <stdio.h>
-
-#pragma warning(push, 3)
-
-#include <windows.h>
-
-#include <Psapi.h>
-
-#pragma warning(pop)
-
-#include <stdint.h>
-
-#include <emmintrin.h>
-
-#include <xinput.h>    // Xbox input library
-
-#include <xaudio2.h>  // Audio library
-
-#pragma comment(lib, "XAudio2.lib")
-
-#pragma comment(lib, "XInput.lib")
-
-#pragma comment(lib, "Winmm.lib")
-
-#include "Main.h"
-
-#include "Menus.h"
-
-#pragma warning (disable: 4668)
-
-#define GAME_BPP 32
-#define GAME_DRAWING_AREA_MEMORY_SIZE (GAME_RES_WIDTH  * GAME_RES_HEIGHT * (GAME_BPP  / 8))
-#define CALCULATE_AVG_FPS_EVERY_X_FRAMES 120
-#define TARGET_MICROSECONDS_PER_FRAME 16667ULL
-#define SIMD
-
-
-BOOL gGameIsRunning; // gloabal variable, its automatically initialized to zero (false)
-
-HWND gGameWindow; // Wheteher the player has started or loaded a game
-
-GAMEBITMAP gBackBuffer;
-
-GAMEPERFDATA gPerformanceData;
-
-HERO gPlayer;
-
-BOOL gWindowHasFocus;
-
-GAMEBITMAP g6x7Font;
-
-REGISTRYPARAMS gRegistryParams;
-
-XINPUT_STATE gGamepadState;
-
-int8_t gGamepadID = -1;
-
-GAMESTATE gCurrentGameState = GAMESTATE_OPENINGSPLASHSCREEN;
-
-GAMESTATE gPreviousGameState;
-
-GAMESTATE gDesiredGameState;
-
-GAMEINPUT gGameInput;
-
-IXAudio2* gXAudio;
-
-IXAudio2MasteringVoice* gXAudioMasteringVoice;
-
-IXAudio2SourceVoice* gXAudioSFXSorceVoice[NUMBER_OF_SFX_SOURCE_VOICES];
-
-IXAudio2SourceVoice* gXAudioMusicSourceVoice;
-
-uint8_t gSFXSourceVoiceSelector;
-
-float gSFXVolume = 0.5f;
-
-float gMusicVolume = 0.5f;
-
-GAMESOUND gSoundMenuNavigate;
-
-GAMESOUND gSoundMenuChoose;
-
-GAMESOUND gSoundSplashScreen;
-
-GAMESOUND gSoundFadingScreen;
+#include "Main.h" 
 
 
 INT WINAPI WinMain(_In_ HINSTANCE Instance, _In_ HINSTANCE PreviousInstance,
@@ -120,6 +35,8 @@ INT WINAPI WinMain(_In_ HINSTANCE Instance, _In_ HINSTANCE PreviousInstance,
     int64_t PreviousKernelCPUTime = 0;
 
     HANDLE ProcessHandle = GetCurrentProcess();
+
+    gGamepadID = -1;
 
 
     if (LoadRegistryParameters() != ERROR_SUCCESS)
@@ -200,6 +117,24 @@ INT WINAPI WinMain(_In_ HINSTANCE Instance, _In_ HINSTANCE PreviousInstance,
         LogMessageA(Error, "[%s] Load32BppBitmapFromFile failed!", __FUNCTION__);
 
         MessageBoxA(NULL, "Load32BppBitmapFromFile failed!", "Error!", MB_ICONERROR | MB_OK);
+
+        goto Exit;
+    }
+
+    if ((Load32BppBitmapFromFile(".\\Assets\\Maps\\Overworld01.bmpx", &gOverWorld01.GameBitmap)) != ERROR_SUCCESS)
+    {
+        LogMessageA(Error, "[%s] Load32BppBitmapFromFile failed!", __FUNCTION__);
+
+        MessageBoxA(NULL, "Load32BppBitmapFromFile failed!", "Error!", MB_ICONERROR | MB_OK);
+
+        goto Exit;
+    }
+
+    if (LoadTilemapFromFile(".\\Assets\\Maps\\Overworld01.tmx", &gOverWorld01.TIleMap) != ERROR_SUCCESS)
+    {
+        LogMessageA(Error, "[%s] LoadTilemapFromFile failed!", __FUNCTION__);
+
+        MessageBoxA(NULL, "LoadTilemapFromFile failed!", "Error!", MB_ICONERROR | MB_OK);
 
         goto Exit;
     }
@@ -414,7 +349,7 @@ DWORD CreateMainGameWindow(void) {
     WindowClass.hIcon = LoadIconA(NULL, IDI_APPLICATION);
     WindowClass.hIconSm = LoadIconA(NULL, IDI_APPLICATION);
     WindowClass.hCursor = LoadCursorA(NULL, IDC_ARROW);
-    WindowClass.hbrBackground = CreateSolidBrush(RGB(255, 0, 255)); // changing background color
+    WindowClass.hbrBackground = CreateSolidBrush(RGB(0, 0, 0)); // changing background color
     WindowClass.lpszMenuName = NULL;
     WindowClass.lpszClassName = GAME_NAME  "_WINDOWCLASS";
 
@@ -763,9 +698,9 @@ DWORD InitializeHero(void)
 {
     DWORD Error = ERROR_SUCCESS;
 
-    gPlayer.ScreenPosX = 32;
+    gPlayer.ScreenPos.x = 32;
 
-    gPlayer.ScreenPosY = 32;
+    gPlayer.ScreenPos.y = 32;
 
     gPlayer.CurrentArmor = SUIT_0;
 
@@ -892,6 +827,71 @@ void Blit32BppBitmapToBuffer(_In_ GAMEBITMAP* GameBitmap, _In_ uint16_t x, _In_ 
             }
         }
     }
+}
+
+void BlitTileMapToBuffer(_In_ GAMEBITMAP* GameBitmap)
+{
+    int32_t StartingScreenPixel = ((GAME_RES_WIDTH * GAME_RES_HEIGHT) - GAME_RES_WIDTH);
+
+    int32_t StartingBitmapPixel = ((GameBitmap->Bitmapinfo.bmiHeader.biHeight * GameBitmap->Bitmapinfo.bmiHeader.biWidth) - GameBitmap->Bitmapinfo.bmiHeader.biWidth) + gCamera.x - (GameBitmap->Bitmapinfo.bmiHeader.biWidth * gCamera.y);
+
+    int32_t MemoryOffset = 0;
+
+    int32_t BitmapOffset = 0;
+
+#ifdef AVX
+    __m256i BitmapOctaPixel;
+
+    for (int16_t YPixel = 0; YPixel < GAME_RES_HEIGHT; YPixel++)
+    {
+        for (int16_t XPixel = 0; XPixel < GAME_RES_WIDTH; XPixel += 8)
+        {
+            MemoryOffset = StartingScreenPixel + XPixel - (GAME_RES_WIDTH * YPixel);
+
+            BitmapOffset = StartingBitmapPixel + XPixel - (GameBitmap->Bitmapinfo.bmiHeader.biWidth * YPixel);
+
+            BitmapOctaPixel = _mm256_loadu_si256((PIXEL32*)GameBitmap->Memory + BitmapOffset);
+
+            _mm256_store_si256((PIXEL32*)gBackBuffer.Memory + MemoryOffset, BitmapOctaPixel);//
+
+        }
+    }
+
+#elif defined SSE2
+    __m128i BitmapQuadPixel;
+
+    for (int16_t YPixel = 0; YPixel < GAME_RES_HEIGHT; YPixel++)
+    {
+        for (int16_t XPixel = 0; XPixel < GAME_RES_WIDTH; XPixel += 4)
+        {
+            MemoryOffset = StartingScreenPixel + XPixel - (GAME_RES_WIDTH * YPixel);
+
+            BitmapOffset = StartingBitmapPixel + XPixel - (GameBitmap->Bitmapinfo.bmiHeader.biWidth * YPixel);
+
+            BitmapQuadPixel = _mm_load_si128((PIXEL32*)GameBitmap->Memory + BitmapOffset);
+
+            _mm_store_si128((PIXEL32*)gBackBuffer.Memory + MemoryOffset, BitmapQuadPixel);
+    }
+}
+#else
+    PIXEL32 BitmapPixel = { 0 };
+
+    for (int16_t YPixel = 0; YPixel < GAME_RES_HEIGHT; YPixel++)
+    {
+        for (int16_t XPixel = 0; XPixel < GAME_RES_WIDTH; XPixel++)
+        {
+            MemoryOffset = StartingScreenPixel + XPixel - (GAME_RES_WIDTH * YPixel);
+
+            BitmapOffset = StartingBitmapPixel + XPixel - (GameBitmap->Bitmapinfo.bmiHeader.biWidth * YPixel);
+
+            memcpy_s(&BitmapPixel, sizeof(PIXEL32), (PIXEL32*)GameBitmap->Memory + BitmapOffset, sizeof(PIXEL32));
+
+            memcpy_s((PIXEL32*)gBackBuffer.Memory + MemoryOffset, sizeof(PIXEL32), &BitmapPixel, sizeof(PIXEL32));
+
+        }
+    }
+
+#endif
 }
 
 void BlitStringToBuffer(_In_ char* String, _In_ GAMEBITMAP* FontSheet, _In_ PIXEL32 Color, _In_ uint16_t x, _In_ uint16_t y)
@@ -1642,7 +1642,7 @@ void RednerFrameGraphics(void)
         }
         case GAMESTATE_OVERWORLD:
         {
-            
+            DrawOverworld();
 
             break;
         }
@@ -1679,10 +1679,8 @@ void RednerFrameGraphics(void)
 //#endif
 //
 //
-//    PIXEL32 White = {0xff, 0xff, 0xff, 0xff};
-//
-//    Blit32BppBitmapToBuffer(&gPlayer.Sprite[gPlayer.CurrentArmor][gPlayer.Direction + gPlayer.SpriteIndex], gPlayer.ScreenPosX, gPlayer.ScreenPosY);
 
+   
     if (gPerformanceData.DisplayDegubInfo)
     {
         DrawDebugInfo();
@@ -2054,7 +2052,7 @@ void DrawDebugInfo()
 
     BlitStringToBuffer(DebugTextBuffer, &g6x7Font, White, 0, 64);
 
-    sprintf_s(DebugTextBuffer, sizeof(DebugTextBuffer), "Screen Pos:  (%d, %d)", gPlayer.ScreenPosX, gPlayer.ScreenPosY); // _count of returns the number of characters, "places"
+    sprintf_s(DebugTextBuffer, sizeof(DebugTextBuffer), "Screen Pos:  (%d, %d)", gPlayer.ScreenPos.x, gPlayer.ScreenPos.y); // _count of returns the number of characters, "places"
 
     BlitStringToBuffer(DebugTextBuffer, &g6x7Font, White, 0, 72);
 }
@@ -2071,834 +2069,6 @@ void FindFirstConnctedGamepad(void)
         {
             gGamepadID = GamepadIndex;
         }
-    }
-}
-
-void MenuItem_TitleScreen_Resume(void)
-{
-    
-}
-
-void MenuItem_TitleScree_StartNew(void)
-{
-    // If a game i already in progress, this should prompt the user if they are sure that they want to start the new game first,
-    // and lose any unsaved progress.
-    // Otherwise, just go to the character naming screen.
-
-    gPreviousGameState = gCurrentGameState;
-
-    gCurrentGameState = GAMESTATE_CHARACTERNAMING;
-}
-
-void MenuItem_CharacterNaming_Add(void)
-{
-
-    if (strlen(gPlayer.Name) < 8)
-    {
-        gPlayer.Name[strlen(gPlayer.Name)] = gMenu_CharacterNaming.Items[gMenu_CharacterNaming.SelectedItem]->Name[0];
-    
-        PlayGameSound(&gSoundMenuChoose);
-    }
-}
-
-void MenuItem_CharacterNaming_Back(void)
-{
-    if (strlen(gPlayer.Name) < 1)
-    {
-        gPreviousGameState = gCurrentGameState;
-
-        gCurrentGameState = GAMESTATE_TITLESCREEN;
-    }
-    else
-    {
-        gPlayer.Name[strlen(gPlayer.Name) - 1] = '\0';
-    }
-}
-
-void MenuItem_CharacterNaming_OK(void)
-{
-    gPreviousGameState = gCurrentGameState;
-
-    gCurrentGameState = GAMESTATE_OVERWORLD;
-}
-
-void MenuItem_TitleScree_Options(void)
-{
-    gPreviousGameState = gCurrentGameState;
-
-    gCurrentGameState = GAMESTATE_OPTIONSSCREEN;
-}
-
-void MenuItem_TitleScree_Exit(void)
-{
-    gPreviousGameState = gCurrentGameState;
-
-    gCurrentGameState = GAMESTATE_EXITYESNOSCREEN;
-}
-
-void MenuItem_ExitYesNo_Yes(void)
-{
-    SendMessageA(gGameWindow, WM_CLOSE, 0, 0);
-}
-
-void MenuItem_ExitYesNo_No(void)
-{
-    gPreviousGameState = gCurrentGameState;
-
-    gCurrentGameState = GAMESTATE_TITLESCREEN;
-        
-}
-
-void MenuItem_OptionsScreen_SFXVolume(void)
-{
-    gSFXVolume += 0.1f;
-
-    if ((uint8_t)(gSFXVolume * 10) > 10)
-    {
-        gSFXVolume = 0.f;
-    }
-
-    for (uint8_t Counter = 0; Counter < NUMBER_OF_SFX_SOURCE_VOICES; Counter++)
-    {
-        gXAudioSFXSorceVoice[Counter]->lpVtbl->SetVolume(gXAudioSFXSorceVoice[Counter], gSFXVolume, XAUDIO2_COMMIT_NOW);
-    }
-}
-
-void MenuItem_OptionsScreen_MusicVolume(void)
-{
-    gMusicVolume += 0.1f;
-
-    if ((uint8_t)(gMusicVolume * 10) > 10)
-    {
-        gMusicVolume = 0.f;
-    }
-
-    gXAudioMusicSourceVoice->lpVtbl->SetVolume(gXAudioMusicSourceVoice, gMusicVolume, XAUDIO2_COMMIT_NOW);
-}
-
-void MenuItem_OptionsScreen_ScreenSize(void)
-{
-    if (gPerformanceData.CurrentScaleFactor < gPerformanceData.MaxScaleFactor)
-    {
-        gPerformanceData.CurrentScaleFactor++;
-    }
-    else
-    {
-        gPerformanceData.CurrentScaleFactor = 1;
-    }
-
-    InvalidateRect(gGameWindow, NULL, TRUE);
-}
-
-void MenuItem_OptionsScreen_Back(void)
-{
-    gPreviousGameState = gCurrentGameState;
-
-    gCurrentGameState = GAMESTATE_TITLESCREEN;
-
-    if (SaveRegistryParametars() != ERROR_SUCCESS)
-    {
-        LogMessageA(Error, "[%s] SaveRegistryParameters failed!", __FUNCTION__);
-    }
-}
-
-void DrawOptionsScreen(void)
-{
-    PIXEL32 Gray = { 0x6f, 0x6f, 0x6f, 0x06f };
-
-    static uint64_t LocalFrameCounter;
-
-    static uint64_t LastFrameSeen;
-
-    static PIXEL32 TextColor = { 0x00, 0x00, 0x00, 0x00 };
-
-    char ScreenSizeString[64] = { 0 };
-
-    if (gPerformanceData.TotalFramesRednered > (LastFrameSeen + 1))
-    {
-        LocalFrameCounter = 0;
-
-        TextColor.Red = 0x00;
-
-        TextColor.Blue = 0x00;
-
-        TextColor.Green = 0x00;
-
-        gMenu_OptionsScreen.SelectedItem = 0;
-    }
-
-    memset(gBackBuffer.Memory, 0, GAME_DRAWING_AREA_MEMORY_SIZE);
-
-    if (LocalFrameCounter >= 20)
-    {
-        if (LocalFrameCounter % 10 == 0 && LocalFrameCounter < 80)
-        {
-            TextColor.Red += 32;
-
-            TextColor.Blue += 32;
-
-            TextColor.Green += 32;
-        }
-
-        if (LocalFrameCounter == 70)
-        {
-            TextColor.Red = 255;
-
-            TextColor.Blue = 255;
-
-            TextColor.Green = 255;
-        }
-    }
-
-    for (uint8_t MenuItem = 0; MenuItem < gMenu_OptionsScreen.ItemCount; MenuItem++)
-    {
-        if (gMenu_OptionsScreen.Items[MenuItem]->Enabled == TRUE)
-        {
-            BlitStringToBuffer(gMenu_OptionsScreen.Items[MenuItem]->Name, &g6x7Font, TextColor, gMenu_OptionsScreen.Items[MenuItem]->x, gMenu_OptionsScreen.Items[MenuItem]->y);
-        }
-    }
-
-    for (uint8_t Volume = 0; Volume < 10; Volume++)
-    {
-        if (Volume >= (uint8_t)(gSFXVolume * 10))
-        {
-            if (TextColor.Red == 255)
-            {
-                BlitStringToBuffer("\xf2", &g6x7Font, Gray, 240 + (Volume * 6), 100);
-            }
-        }
-        else
-        {
-            BlitStringToBuffer("\xf2", &g6x7Font, TextColor, 240 + (Volume * 6), 100);
-
-        }
-    }
-
-    for (uint8_t Volume = 0; Volume < 10; Volume++)
-    {
-        if (Volume >= (uint8_t)(gMusicVolume * 10))
-        {
-            if (TextColor.Red == 255)
-            {
-                BlitStringToBuffer("\xf2", &g6x7Font, Gray, 240 + (Volume * 6), 120);
-            }
-        }
-        else
-        {
-            BlitStringToBuffer("\xf2", &g6x7Font, TextColor, 240 + (Volume * 6), 120);
-
-        }
-    }
-
-    snprintf(ScreenSizeString, sizeof(ScreenSizeString), "%dx%d", GAME_RES_WIDTH * gPerformanceData.CurrentScaleFactor, GAME_RES_HEIGHT * gPerformanceData.CurrentScaleFactor);
-
-    BlitStringToBuffer(ScreenSizeString, &g6x7Font, TextColor, 240, gMI_OptionsScreen_ScreenSize.y);
-
-    BlitStringToBuffer("\xbb", &g6x7Font, TextColor, gMenu_OptionsScreen.Items[gMenu_OptionsScreen.SelectedItem]->x - 6, gMenu_OptionsScreen.Items[gMenu_OptionsScreen.SelectedItem]->y);
-
-
-    LocalFrameCounter++;
-
-    LastFrameSeen = gPerformanceData.TotalFramesRednered;
-}
-
-void DrawExitYesNoExitScreen()
-{
-    static uint64_t LocalFrameCounter;
-
-    static uint64_t LastFrameSeen;
-
-    static PIXEL32 TextColor = { 0x00, 0x00, 0x00, 0x00 };
-
-    if (gPerformanceData.TotalFramesRednered > (LastFrameSeen + 1))
-    {
-        LocalFrameCounter = 0;
-
-        TextColor.Red = 0x00;
-
-        TextColor.Blue = 0x00;
-
-        TextColor.Green = 0x00;
-    }
-
-    memset(gBackBuffer.Memory, 0, GAME_DRAWING_AREA_MEMORY_SIZE);
-
-    if (LocalFrameCounter >= 20)
-    {
-        if (LocalFrameCounter % 10 == 0 && LocalFrameCounter < 80)
-        {
-            TextColor.Red += 32;
-
-            TextColor.Blue += 32;
-
-            TextColor.Green += 32;
-        }
-
-        if (LocalFrameCounter == 70)
-        {
-            TextColor.Red = 255;
-
-            TextColor.Blue = 255;
-
-            TextColor.Green = 255;
-        }
-    }
-
-    BlitStringToBuffer(gMenu_ExitYesNo.Name, &g6x7Font, TextColor, (GAME_RES_WIDTH/2)-((uint16_t)strlen(gMenu_ExitYesNo.Name)*6)/2, 60);
-
-    BlitStringToBuffer(gMenu_ExitYesNo.Items[0]->Name, &g6x7Font, TextColor, (GAME_RES_WIDTH / 2) - ((uint16_t)strlen(gMenu_ExitYesNo.Items[0]->Name) * 6) / 2, 100);
-
-    BlitStringToBuffer(gMenu_ExitYesNo.Items[1]->Name, &g6x7Font, TextColor, (GAME_RES_WIDTH / 2) - ((uint16_t)strlen(gMenu_ExitYesNo.Items[1]->Name) * 6) / 2, 120);
-
-    BlitStringToBuffer("\xbb", &g6x7Font, TextColor, gMenu_ExitYesNo.Items[gMenu_ExitYesNo.SelectedItem]->x - 6, gMenu_ExitYesNo.Items[gMenu_ExitYesNo.SelectedItem]->y);
-
-    LocalFrameCounter++;
-
-    LastFrameSeen = gPerformanceData.TotalFramesRednered;
-}
-
-void DrawCharacterNaming(void)
-{
-    static uint64_t LocalFrameCounter;
-
-    static uint64_t LastFrameSeen;
-
-    static PIXEL32 TextColor = { 0x00, 0x00, 0x00, 0x00 };
-
-    if (gPerformanceData.TotalFramesRednered > (LastFrameSeen + 1))
-    {
-        LocalFrameCounter = 0;
-
-        TextColor.Red = 0x00;
-
-        TextColor.Blue = 0x00;
-
-        TextColor.Green = 0x00;
-
-        gMenu_CharacterNaming.SelectedItem = 0;
-
-    }
-
-    memset(gBackBuffer.Memory, 0, GAME_DRAWING_AREA_MEMORY_SIZE);
-
-    if (LocalFrameCounter >= 20)
-    {
-        if (LocalFrameCounter % 10 == 0 && LocalFrameCounter < 80)
-        {
-            TextColor.Red += 32;
-
-            TextColor.Blue += 32;
-
-            TextColor.Green += 32;
-        }
-
-        if (LocalFrameCounter == 70)
-        {
-            TextColor.Red = 255;
-
-            TextColor.Blue = 255;
-
-            TextColor.Green = 255;
-        }
-    }
-
-    BlitStringToBuffer(gMenu_CharacterNaming.Name, &g6x7Font, TextColor, (GAME_RES_WIDTH / 2) - (strlen(gMenu_CharacterNaming.Name) * 6) / 2, 30);
-
-    if (LocalFrameCounter >= 50)
-    {
-        Blit32BppBitmapToBuffer(&gPlayer.Sprite[SUIT_0][FACING_DOWN_0], 152, 62);
-    }
-
-    for (uint8_t Counter = 0; Counter < 8; Counter++)
-    {
-        if (gPlayer.Name[Counter] == '\0')
-        {
-            BlitStringToBuffer("_", &g6x7Font, TextColor, 170 + Counter*6, 65);
-        }
-        else
-        {
-            BlitStringToBuffer(&gPlayer.Name[Counter], &g6x7Font, TextColor, 170 + Counter * 6, 65);
-        }
-    }
-
-    for (uint8_t Counter = 0; Counter < gMenu_CharacterNaming.ItemCount; Counter++)
-    {
-        BlitStringToBuffer(gMenu_CharacterNaming.Items[Counter]->Name, &g6x7Font, TextColor, gMenu_CharacterNaming.Items[Counter]->x, gMenu_CharacterNaming.Items[Counter]->y);
-    }
-
-    BlitStringToBuffer("\xbb", &g6x7Font, TextColor, gMenu_CharacterNaming.Items[gMenu_CharacterNaming.SelectedItem]->x - 6, gMenu_CharacterNaming.Items[gMenu_CharacterNaming.SelectedItem]->y);
-
-    LocalFrameCounter++;
-
-    LastFrameSeen = gPerformanceData.TotalFramesRednered;
-}
-
-
-void DrawGamepadUnplugged(void)
-{
-#define GAMEPADUNPLUGGEDSTRING1 "Gamepad Dinsconnected"
-
-#define GAMEPADUNPLUGGEDSTRING2 "Reconnect it, or press escape to continue using the keyboard."
-
-    PIXEL32 White = { 0xff, 0xff, 0xff, 0xff };
-
-    memset(gBackBuffer.Memory, 0, GAME_DRAWING_AREA_MEMORY_SIZE);
-
-    BlitStringToBuffer(GAMEPADUNPLUGGEDSTRING1, &g6x7Font, White, (GAME_RES_WIDTH/2)-((strlen(GAMEPADUNPLUGGEDSTRING1) *6) /2), 100);
-
-    BlitStringToBuffer(GAMEPADUNPLUGGEDSTRING2, &g6x7Font, White, (GAME_RES_WIDTH / 2) - ((strlen(GAMEPADUNPLUGGEDSTRING2)*6) / 2), 120);
-
-}
-
-void DrawOpeningSplashScreen(void)
-{
-    static uint64_t LocalFrameCounter;
-
-    static uint64_t LastFrameSeen;
-
-    static uint8_t BrightnessModifier = 0;
-
-    static BOOL FadingSoundTunredOn = FALSE;
-
-    if (gPerformanceData.TotalFramesRednered > (LastFrameSeen + 1)) // we have left the screen and came bac
-    {
-        LocalFrameCounter = 0;
-    }
-
-    if (LocalFrameCounter == 60)
-    {
-        PlayGameSound(&gSoundSplashScreen);
-    }
-
-    if (LocalFrameCounter > 60)
-    {
-        if (LocalFrameCounter >= 150 && LocalFrameCounter % 10 == 0 && LocalFrameCounter <= 250)
-        {
-            BrightnessModifier += 16;
-        } 
-        if (LocalFrameCounter == 255 || LocalFrameCounter ==  260 || LocalFrameCounter == 265 || LocalFrameCounter == 270)
-        {
-            BrightnessModifier += 18;
-        }
-
-
-        if (LocalFrameCounter == 260)
-        {
-            gPreviousGameState = gCurrentGameState;
-
-            gCurrentGameState = GAMESTATE_TITLESCREEN;
-        }
-
-        BlitStringToBuffer("- Game Studio -", &g6x7Font, ((PIXEL32){0xFF - BrightnessModifier, 0xFF - BrightnessModifier, 0xFF - BrightnessModifier, 0xFF}), (GAME_RES_WIDTH / 2) - (15 * 6) / 2, 110);
-        
-        BlitStringToBuffer("Presents", &g6x7Font, ((PIXEL32){0xFF - BrightnessModifier, 0xFF - BrightnessModifier, 0xFF - BrightnessModifier, 0xFF}), (GAME_RES_WIDTH/2) - (8*6)/2, 125);
-    }
-
-    if (LocalFrameCounter >= 140 && !FadingSoundTunredOn)
-    {
-        FadingSoundTunredOn = TRUE;
-
-        PlayGameSound(&gSoundFadingScreen);
-    }
-
-
-    LocalFrameCounter++;
-
-    LastFrameSeen = gPerformanceData.TotalFramesRednered;
-}
-
-void DrawTitleScreen(void)
-{
-    static uint64_t LocalFrameCounter;
-
-    static uint64_t LastFrameSeen;
-
-    static PIXEL32 TextColor = { 0x00, 0x00, 0x00, 0x00 };
-
-    if (gPerformanceData.TotalFramesRednered > (LastFrameSeen + 1))
-    {
-        LocalFrameCounter = 0;
-
-        TextColor.Red = 0x00;
-
-        TextColor.Blue = 0x00;
-
-        TextColor.Green = 0x00;
-
-        if (gPlayer.Active)
-        {
-            gMenu_TitleScreen.SelectedItem = 0;
-        }
-        else 
-        {
-            gMenu_TitleScreen.SelectedItem = 1;
-        }
-    }
-
-    memset(gBackBuffer.Memory, 0, GAME_DRAWING_AREA_MEMORY_SIZE);
-
-    if (LocalFrameCounter >= 20)
-    {
-        if (LocalFrameCounter % 10 == 0 && LocalFrameCounter < 80)
-        {
-            TextColor.Red += 32;
-
-            TextColor.Blue += 32;
-
-            TextColor.Green += 32;
-        }
-
-        if (LocalFrameCounter == 70)
-        {
-            TextColor.Red = 255;
-
-            TextColor.Blue = 255;
-
-            TextColor.Green = 255;
-        }
-    }
-
-    BlitStringToBuffer(GAME_NAME, &g6x7Font, TextColor, (GAME_RES_WIDTH/2) - ((strlen(GAME_NAME) * 6)/2),  60);
-
-    for (uint8_t MenuItem = 0; MenuItem < gMenu_TitleScreen.ItemCount; MenuItem++)
-    {
-        if (gMenu_TitleScreen.Items[MenuItem]->Enabled == TRUE)
-        {
-           BlitStringToBuffer(gMenu_TitleScreen.Items[MenuItem]->Name, &g6x7Font, TextColor, gMenu_TitleScreen.Items[MenuItem]->x, gMenu_TitleScreen.Items[MenuItem]->y);   
-        }
-    }
-
-    BlitStringToBuffer("\xbb", &g6x7Font, TextColor, gMenu_TitleScreen.Items[gMenu_TitleScreen.SelectedItem]->x - 6, gMenu_TitleScreen.Items[gMenu_TitleScreen.SelectedItem]->y);
-
-
-    LocalFrameCounter++;
-
-    LastFrameSeen = gPerformanceData.TotalFramesRednered;
-}
-
-void PPI_OpeningSplasheScreen(void)
-{
-    if (gGameInput.EscapeKeyIsDown && !gGameInput.EscapeKeyWasDown)
-    {
-        gCurrentGameState = GAMESTATE_TITLESCREEN;
-
-        gPreviousGameState = GAMESTATE_OPENINGSPLASHSCREEN;
-    }
-}
-
-void PPI_CharacterNaming(void)
-{
-    if (gGameInput.UpKeyIsDown && !gGameInput.UpKeyWasDown)
-    {
-        if (gMenu_CharacterNaming.SelectedItem > 12)
-        {
-            gMenu_CharacterNaming.SelectedItem -= 13;
-        
-            PlayGameSound(&gSoundMenuNavigate);
-        }
-
-        else 
-        {
-            gMenu_CharacterNaming.SelectedItem = 52;
-
-            PlayGameSound(&gSoundMenuNavigate);
-        }
-    }
-
-    if (gGameInput.DownKeyIsDown && !gGameInput.DownKeyWasDown)
-    {
-        if (gMenu_CharacterNaming.SelectedItem < 39)
-        {
-            gMenu_CharacterNaming.SelectedItem += 13;
-
-            PlayGameSound(&gSoundMenuNavigate);
-        } 
-        else
-        {
-            gMenu_CharacterNaming.SelectedItem = 53;
-
-            PlayGameSound(&gSoundMenuNavigate);
-        }
-    }
-
-    if (gGameInput.LeftKeyIsDown && !gGameInput.LeftKeyWasDown)
-    {
-        if (gMenu_CharacterNaming.SelectedItem == 0 ||
-            gMenu_CharacterNaming.SelectedItem == 13 ||
-            gMenu_CharacterNaming.SelectedItem == 26 ||
-            gMenu_CharacterNaming.SelectedItem == 39)
-        {
-            gMenu_CharacterNaming.SelectedItem += 12;
-            PlayGameSound(&gSoundMenuNavigate);
-        }
-
-        else if (gMenu_CharacterNaming.SelectedItem > 0 && gMenu_CharacterNaming.SelectedItem != 52)
-        {
-            gMenu_CharacterNaming.SelectedItem--;
-
-            PlayGameSound(&gSoundMenuNavigate);
-        } 
-        else if (gMenu_CharacterNaming.SelectedItem == 52)
-        {
-            gMenu_CharacterNaming.SelectedItem++;
-        }
-    }
-
-    if (gGameInput.RightKeyIsDown && !gGameInput.RightKeyWasDown)
-    {
-        if (gMenu_CharacterNaming.SelectedItem == 12 ||
-            gMenu_CharacterNaming.SelectedItem == 25 ||
-            gMenu_CharacterNaming.SelectedItem == 38 ||
-            gMenu_CharacterNaming.SelectedItem == 51)
-        {
-            gMenu_CharacterNaming.SelectedItem -= 12;
-        }
-
-        else if (gMenu_CharacterNaming.SelectedItem < 53)
-          {
-            gMenu_CharacterNaming.SelectedItem++;
-
-        }
-        else if (gMenu_CharacterNaming.SelectedItem == 53)
-        {
-            gMenu_CharacterNaming.SelectedItem--;
-        }
-    }
-
-    if (gGameInput.ChooseKeyIsDown && !gGameInput.ChooseKeyWasDown)
-    {
-        gMenu_CharacterNaming.Items[gMenu_CharacterNaming.SelectedItem]->Action();
-
-        PlayGameSound(&gSoundMenuChoose);
-    }
-
-    if (gGameInput.EscapeKeyIsDown && !gGameInput.EscapeKeyWasDown)
-    {
-        MenuItem_CharacterNaming_Back();
-    }
-}
-
-void PPI_TitleScreen(void)
-{
-
-
-    if (gGameInput.DownKeyIsDown && !gGameInput.DownKeyWasDown)
-    {
-        if (gMenu_TitleScreen.SelectedItem < gMenu_TitleScreen.ItemCount -1)
-        {
-            gMenu_TitleScreen.SelectedItem++;
-
-            PlayGameSound(&gSoundMenuNavigate);
-        }
-    }
-
-    if (gGameInput.UpKeyIsDown && !gGameInput.UpKeyWasDown)
-    {
-        if (gMenu_TitleScreen.SelectedItem > 0)
-        {
-            if (gMenu_TitleScreen.SelectedItem == 1)
-            {
-                if (gPlayer.Active)
-                {
-                    gMenu_TitleScreen.SelectedItem--;
-
-                    PlayGameSound(&gSoundMenuNavigate);
-                }
-            }
-            else
-            {
-                gMenu_TitleScreen.SelectedItem--;
-
-                PlayGameSound(&gSoundMenuNavigate);
-            }
-        }
-    }
-
-    if (gGameInput.ChooseKeyIsDown && !gGameInput.ChooseKeyWasDown)
-    {
-        gMenu_TitleScreen.Items[gMenu_TitleScreen.SelectedItem]->Action();
-    
-        PlayGameSound(&gSoundMenuChoose);
-    }
-}
-
-void PPI_Overworld(void)
-{
-    if (gGameInput.EscapeKeyIsDown)
-    {
-        SendMessageA(gGameWindow, WM_CLOSE, 0, 0);
-    }
-
-    if (!gPlayer.MovementRemaining)
-    {
-        if (gGameInput.DownKeyIsDown)
-        {
-            if (gPlayer.ScreenPosY < GAME_RES_HEIGHT - 16)
-            {
-                gPlayer.Direction = DIRECTION_DOWN;
-
-                gPlayer.MovementRemaining = 16;
-            }
-        }
-        else if (gGameInput.LeftKeyIsDown)
-        {
-            if (gPlayer.ScreenPosX > 0)
-            {
-                gPlayer.Direction = DIRECTION_LEFT;
-
-                gPlayer.MovementRemaining = 16;
-            }
-        }
-        else if (gGameInput.RightKeyIsDown)
-        {
-            if (gPlayer.ScreenPosX < GAME_RES_WIDTH - 16)
-            {
-                gPlayer.Direction = DIRECTION_RIGTH;
-
-                gPlayer.MovementRemaining = 16;
-            }
-        }
-        else if (gGameInput.UpKeyIsDown)
-        {
-            if (gPlayer.ScreenPosY > 0)
-            {
-                gPlayer.Direction = DIRECTION_UP;
-
-                gPlayer.MovementRemaining = 16;
-            }
-        }
-    }
-    else
-    {
-        gPlayer.MovementRemaining--;
-
-        if (gPlayer.Direction == DIRECTION_DOWN)
-        {
-            gPlayer.ScreenPosY++;
-        }
-        else if (gPlayer.Direction == DIRECTION_LEFT)
-        {
-            gPlayer.ScreenPosX--;
-        }
-        else if (gPlayer.Direction == DIRECTION_RIGTH)
-        {
-            gPlayer.ScreenPosX++;
-        }
-        else if (gPlayer.Direction == DIRECTION_UP)
-        {
-            gPlayer.ScreenPosY--;
-        }
-
-        switch (gPlayer.MovementRemaining)
-        {
-        case 16:
-        {
-            gPlayer.SpriteIndex = 0;
-
-            break;
-        }
-        case 12:
-        {
-            gPlayer.SpriteIndex = 1;
-
-            break;
-        }
-        case 8:
-        {
-            gPlayer.SpriteIndex = 0;
-
-            break;
-        }
-        case 4:
-        {
-            gPlayer.SpriteIndex = 2;
-
-            break;
-        }
-
-        case 0:
-        {
-            gPlayer.SpriteIndex = 0;
-
-            break;
-        }
-        default:
-        {
-
-        }
-        }
-    }
-}
-
-void PPI_ExitYesNo(void)
-{
-    if (gGameInput.DownKeyIsDown && !gGameInput.DownKeyWasDown)
-    {
-        if (gMenu_ExitYesNo.SelectedItem < gMenu_ExitYesNo.ItemCount - 1)
-        {
-            gMenu_ExitYesNo.SelectedItem++;
-
-            PlayGameSound(&gSoundMenuNavigate);
-        }
-    }
-
-    if (gGameInput.UpKeyIsDown && !gGameInput.UpKeyWasDown)
-    {
-        if (gMenu_ExitYesNo.SelectedItem > 0)
-        {
-            gMenu_ExitYesNo.SelectedItem--;
-
-            PlayGameSound(&gSoundMenuNavigate);
-        }
-    }
-
-    if (gGameInput.ChooseKeyIsDown && !gGameInput.ChooseKeyWasDown)
-    {
-        gMenu_ExitYesNo.Items[gMenu_ExitYesNo.SelectedItem]->Action();
-
-        PlayGameSound(&gSoundMenuChoose);
-    }
-}
-
-void PPI_GamepadUnplugged(void)
-{
-    if (gGamepadID > -1 || (gGameInput.EscapeKeyIsDown) && !gGameInput.EscapeKeyIsDown)
-    {
-        gCurrentGameState = gPreviousGameState;
-
-        gPreviousGameState = GAMESTATE_GAMEPADUNPLUGGED;
-    }
-    
-}
-
-void PPI_OptionsScreen(void)
-{
-    if (gGameInput.DownKeyIsDown && !gGameInput.DownKeyWasDown)
-    {
-        if (gMenu_OptionsScreen.SelectedItem < gMenu_OptionsScreen.ItemCount -1)
-        {
-            gMenu_OptionsScreen.SelectedItem++;
-
-            PlayGameSound(&gSoundMenuNavigate);
-        }
-    }
-
-    if (gGameInput.UpKeyIsDown && !gGameInput.UpKeyWasDown)
-    {
-        if (gMenu_OptionsScreen.SelectedItem > 0)
-        {
-            gMenu_OptionsScreen.SelectedItem--;
-
-            PlayGameSound(&gSoundMenuNavigate);
-        }
-    }
-
-    if (gGameInput.ChooseKeyIsDown && !gGameInput.ChooseKeyWasDown)
-    {
-
-        gMenu_OptionsScreen.Items[gMenu_OptionsScreen.SelectedItem]->Action();
-
-        PlayGameSound(&gSoundMenuChoose);
     }
 }
 
@@ -3195,3 +2365,233 @@ void PlayGameSound(_In_ GAMESOUND* GameSound)
     }
 }
 
+DWORD LoadTilemapFromFile(_In_ char* FileName, _Inout_ TILEMAP* TileMap)
+{
+    DWORD Result = ERROR_SUCCESS;
+
+    HANDLE FileHandle = INVALID_HANDLE_VALUE;
+
+    LARGE_INTEGER FileSize = { 0 };
+
+    void* FileBuffer = NULL;
+
+    DWORD NumberOfBytesRead = 0;
+
+    char* Cursor = NULL;
+
+    char TempBuffer[16] = { 0 };
+
+    if ((FileHandle = CreateFileA(FileName, GENERIC_READ, FILE_SHARE_READ, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL)) == INVALID_HANDLE_VALUE)
+    {
+        Result = GetLastError();
+
+        LogMessageA(Error, "[%s] CreateFileA failed! Error 0x%08lx!", __FUNCTION__, Result);
+
+        goto Exit;
+    }
+
+    if (GetFileSizeEx(FileHandle, &FileSize) == 0)
+    {
+        Result = GetLastError;
+
+        LogMessageA(Error, "[%s] GetFileSizeEx failed! Error 0x%08lx!", __FUNCTION__, Result);
+
+        goto Exit;
+    }
+
+    LogMessageA(Error, "[%s] Size of file %s: %lu", __FUNCTION__, FileName, FileSize);
+
+    FileBuffer = HeapAlloc(GetProcessHeap(), HEAP_ZERO_MEMORY, FileSize.QuadPart);
+
+    if (FileBuffer == NULL)
+    {
+        Result = ERROR_OUTOFMEMORY;
+
+        LogMessageA(Error, "[%s] HeapAlloc failed! Error 0x%08lx!", __FUNCTION__, Result);
+
+        goto Exit;
+    }
+
+    if (ReadFile(FileHandle, FileBuffer, (DWORD)FileSize.QuadPart, &NumberOfBytesRead, NULL) == 0)
+    {
+        Result = GetLastError();
+
+        LogMessageA(Error, "[%s] ReadFile failed! Error 0x%08lx!", __FUNCTION__, Result);
+
+        goto Exit;
+    }
+
+    if ((Cursor = strstr(FileBuffer, "width=")) == NULL)
+    {
+        Result = ERROR_INVALID_DATA;
+
+        LogMessageA(Error, "[%s] Could not locate the width attribute! Error 0x%08lx!", __FUNCTION__, Result);
+
+        goto Exit;
+    }
+
+    NumberOfBytesRead = 0;
+
+    for (;;)
+    {
+        if (NumberOfBytesRead > 8)
+        {
+            // We shoudl have found opening quotation mark
+
+            Result = ERROR_INVALID_DATA;
+
+            LogMessageA(Error, "[%s] Could not locate the opening quotation mark befote the width attribute! Error 0x%08lx!", __FUNCTION__, Result);
+
+            goto Exit;
+        }
+
+        if (*Cursor == '\"')
+        {
+            Cursor++;
+
+            break;
+        }
+        else
+        {
+            Cursor++;
+        }
+
+        NumberOfBytesRead++;
+    }
+    
+    NumberOfBytesRead = 0;
+
+    for (uint8_t Counter = 0; Counter < 6; Counter++)
+    {
+        if (*Cursor == '\"')
+        {
+            Cursor++;
+
+            break;
+        }
+        else
+        {
+            TempBuffer[Counter] = *Cursor;
+
+            Cursor++;
+        }
+    }
+
+    TileMap->Width = atoi(TempBuffer);
+
+    if (TileMap->Width == 0)
+    {
+        Result = ERROR_INVALID_DATA;
+
+        LogMessageA(Error, "[%s] Width attribute is 0! Error 0x%08lx!", __FUNCTION__, Result);
+
+        goto Exit;
+    }
+
+    memset(TempBuffer, 0, sizeof(TempBuffer));
+
+    if ((Cursor = strstr(FileBuffer, "height=")) == NULL)
+    {
+        Result = ERROR_INVALID_DATA;
+
+        LogMessageA(Error, "[%s] Could not locate the height attribute! Error 0x%08lx!", __FUNCTION__, Result);
+
+        goto Exit;
+    }
+
+    NumberOfBytesRead = 0;
+
+    for (;;)
+    {
+        if (NumberOfBytesRead > 8)
+        {
+            // We shoudl have found opening quotation mark
+
+            Result = ERROR_INVALID_DATA;
+
+            LogMessageA(Error, "[%s] Could not locate the opening quotation mark befote the height attribute! Error 0x%08lx!", __FUNCTION__, Result);
+
+            goto Exit;
+        }
+
+        if (*Cursor == '\"')
+        {
+            Cursor++;
+
+            break;
+        }
+        else
+        {
+            Cursor++;
+        }
+
+        NumberOfBytesRead++;
+    }
+
+    NumberOfBytesRead = 0;
+
+    for (uint8_t Counter = 0; Counter < 6; Counter++)
+    {
+        if (*Cursor == '\"')
+        {
+            Cursor++;
+
+            break;
+        }
+        else
+        {
+            TempBuffer[Counter] = *Cursor;
+
+            Cursor++;
+        }
+    }
+
+    TileMap->Height = atoi(TempBuffer);
+
+    if (TileMap->Height == 0)
+    {
+        Result = ERROR_INVALID_DATA;
+
+        LogMessageA(Error, "[%s] Width attribute is 0! Error 0x%08lx!", __FUNCTION__, Result);
+
+        goto Exit;
+    }
+
+    TileMap->Map = HeapAlloc(GetProcessHeap(), HEAP_ZERO_MEMORY, TileMap->Height * sizeof(void*));
+    
+    if (TileMap->Map == NULL)
+    {
+        Result = ERROR_OUTOFMEMORY;
+
+        LogMessageA(Error, "[%s] HeapAllco failed! Error 0x%08lx!", __FUNCTION__, Result);
+
+        goto Exit;
+    }
+
+    for (uint16_t Counter = 0; Counter < TileMap->Height; Counter++)
+    {
+        TileMap->Map[Counter] = HeapAlloc(GetProcessHeap, HEAP_ZERO_MEMORY, TileMap->Width * sizeof(void*));
+
+        if (TileMap->Map[Counter] == NULL)
+        {
+            Result = ERROR_OUTOFMEMORY;
+
+            LogMessageA(Error, "[%s] HeapAllco failed! Error 0x%08lx!", __FUNCTION__, Result);
+
+            goto Exit;
+        }
+    }
+
+Exit:
+    if (FileHandle && FileHandle != INVALID_HANDLE_VALUE)
+    {
+        CloseHandle(FileHandle);
+    }
+
+    if (FileBuffer)
+    {
+        HeapFree(GetProcessHeap(), 0, FileBuffer);
+    }
+
+    return Result;
+}
