@@ -1,5 +1,13 @@
 #pragma once
 
+#pragma warning(disable: 4668)
+
+#pragma warning(disable: 4820)
+
+#pragma warning(disable: 5045)
+
+#pragma warning(disable: 4244)
+
 #pragma warning(push, 3)
 
 #include <windows.h>
@@ -33,6 +41,8 @@
 #endif
 
 #pragma warning(pop)
+
+#include "Tiles.h"
 
 
 #ifdef _DEBUG
@@ -258,6 +268,8 @@ typedef struct HERO
 {
 	UPOINT ScreenPos;
 
+	UPOINT WorldPos;
+
 	uint8_t MovementRemaining;
 
 	uint8_t Direction;
@@ -360,6 +372,8 @@ GAMESOUND gSoundMenuNavigate;
 
 GAMESOUND gSoundMenuChoose;
 
+GAMESOUND gMusicOverworld01;
+
 float gSFXVolume;
 
 float gMusicVolume;
@@ -387,6 +401,8 @@ XINPUT_STATE gGamepadState;
 GAMEMAP gOverWorld01;
 
 UPOINT gCamera;
+
+uint8_t gPassablieTiles[2];
 
 INT __stdcall WinMain(HINSTANCE Instance, HINSTANCE PreviousInstance, PSTR CommandLine, INT CommandShow);
 
@@ -426,7 +442,11 @@ DWORD LoadWaveFromFile(_In_ char* FileName , _Inout_ GAMESOUND* GameSound);
 
 void PlayGameSound(_In_ GAMESOUND* GameSound);
 
+void PlayGameMusic(_In_ GAMESOUND* GameSound);
+
 DWORD LoadTilemapFromFile(_In_ char* FileName, _Inout_ TILEMAP* TileMap);
+
+DWORD LoadOggFromFile(_In_ char* FileName, _Inout_ GAMESOUND* GameSound);
 
 #ifdef SIMD
 void ClearScreen(_In_ __m128i* Color);

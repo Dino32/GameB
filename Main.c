@@ -1,5 +1,6 @@
 #include "Main.h" 
 
+#include "stb_vorbis.h"
 
 INT WINAPI WinMain(_In_ HINSTANCE Instance, _In_ HINSTANCE PreviousInstance,
     _In_ PSTR CommandLine, _In_ INT CommandShow) {
@@ -36,7 +37,14 @@ INT WINAPI WinMain(_In_ HINSTANCE Instance, _In_ HINSTANCE PreviousInstance,
 
     HANDLE ProcessHandle = GetCurrentProcess();
 
+
     gGamepadID = -1;
+
+    gPassablieTiles[0] = TILE_GRASS_01;
+
+    gPassablieTiles[1] = TILE_BRIDGE_01;
+
+    gCurrentGameState = GAMESTATE_OPENINGSPLASHSCREEN;
 
 
     if (LoadRegistryParameters() != ERROR_SUCCESS)
@@ -170,6 +178,13 @@ INT WINAPI WinMain(_In_ HINSTANCE Instance, _In_ HINSTANCE PreviousInstance,
     if (LoadWaveFromFile(".\\Assets\\Fading.wav", &gSoundFadingScreen) != ERROR_SUCCESS)
     {
         MessageBoxA(NULL, "LoadWaveFromFile failed!", "Error!", MB_ICONERROR | MB_OK);
+
+        goto Exit;
+    }
+
+    if (LoadOggFromFile(".\\Assets\\Overworld01.ogg", &gMusicOverworld01) != ERROR_SUCCESS)
+    {
+        MessageBoxA(NULL, "LoadOggFromFile failed!", "Error!", MB_ICONERROR | MB_OK);
 
         goto Exit;
     }
@@ -698,9 +713,13 @@ DWORD InitializeHero(void)
 {
     DWORD Error = ERROR_SUCCESS;
 
-    gPlayer.ScreenPos.x = 32;
+    gPlayer.ScreenPos.x = 192;
 
-    gPlayer.ScreenPos.y = 32;
+    gPlayer.ScreenPos.y = 64;
+
+    gPlayer.WorldPos.x = 192;
+
+    gPlayer.WorldPos.y = 64;
 
     gPlayer.CurrentArmor = SUIT_0;
 
@@ -2052,9 +2071,17 @@ void DrawDebugInfo()
 
     BlitStringToBuffer(DebugTextBuffer, &g6x7Font, White, 0, 64);
 
-    sprintf_s(DebugTextBuffer, sizeof(DebugTextBuffer), "Screen Pos:  (%d, %d)", gPlayer.ScreenPos.x, gPlayer.ScreenPos.y); // _count of returns the number of characters, "places"
+    sprintf_s(DebugTextBuffer, sizeof(DebugTextBuffer), "ScreenXY: %d, %d", gPlayer.ScreenPos.x, gPlayer.ScreenPos.y); // _count of returns the number of characters, "places"
 
     BlitStringToBuffer(DebugTextBuffer, &g6x7Font, White, 0, 72);
+
+    snprintf(DebugTextBuffer, sizeof(DebugTextBuffer), "WorldXY:   %d, %d", gPlayer.WorldPos.x, gPlayer.WorldPos.y);
+
+    BlitStringToBuffer(DebugTextBuffer, &g6x7Font, White, 0, 80);
+
+    snprintf(DebugTextBuffer, sizeof(DebugTextBuffer), "CameraXY:  %d, %d", gCamera.x, gCamera.y);
+
+    BlitStringToBuffer(DebugTextBuffer, &g6x7Font, White, 0, 88);
 }
 
 void FindFirstConnctedGamepad(void)
@@ -2365,6 +2392,21 @@ void PlayGameSound(_In_ GAMESOUND* GameSound)
     }
 }
 
+void PlayGameMusic(_In_ GAMESOUND *GameSound)
+{
+    gXAudioMusicSourceVoice->lpVtbl->Stop(gXAudioMusicSourceVoice, 0, 0);
+
+    gXAudioMusicSourceVoice->lpVtbl->FlushSourceBuffers(gXAudioMusicSourceVoice);
+
+    GameSound->Buffer.LoopCount = XAUDIO2_LOOP_INFINITE;
+
+    gXAudioMusicSourceVoice->lpVtbl->SubmitSourceBuffer(gXAudioMusicSourceVoice, &GameSound->Buffer, NULL);
+
+    gXAudioMusicSourceVoice->lpVtbl->Start(gXAudioMusicSourceVoice, 0, XAUDIO2_COMMIT_NOW);
+
+    
+}
+
 DWORD LoadTilemapFromFile(_In_ char* FileName, _Inout_ TILEMAP* TileMap)
 {
     DWORD Result = ERROR_SUCCESS;
@@ -2380,6 +2422,10 @@ DWORD LoadTilemapFromFile(_In_ char* FileName, _Inout_ TILEMAP* TileMap)
     char* Cursor = NULL;
 
     char TempBuffer[16] = { 0 };
+
+    uint16_t Rows = 0;
+
+    uint16_t Columns = 0;
 
     if ((FileHandle = CreateFileA(FileName, GENERIC_READ, FILE_SHARE_READ, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL)) == INVALID_HANDLE_VALUE)
     {
@@ -2399,7 +2445,7 @@ DWORD LoadTilemapFromFile(_In_ char* FileName, _Inout_ TILEMAP* TileMap)
         goto Exit;
     }
 
-    LogMessageA(Error, "[%s] Size of file %s: %lu", __FUNCTION__, FileName, FileSize);
+    LogMessageA(Informational, "[%s] Size of file %s: %lu", __FUNCTION__, FileName, FileSize);
 
     FileBuffer = HeapAlloc(GetProcessHeap(), HEAP_ZERO_MEMORY, FileSize.QuadPart);
 
@@ -2552,35 +2598,111 @@ DWORD LoadTilemapFromFile(_In_ char* FileName, _Inout_ TILEMAP* TileMap)
     {
         Result = ERROR_INVALID_DATA;
 
-        LogMessageA(Error, "[%s] Width attribute is 0! Error 0x%08lx!", __FUNCTION__, Result);
+        LogMessageA(Error, "[%s] Height attribute is 0! Error 0x%08lx!", __FUNCTION__, Result);
 
         goto Exit;
     }
 
-    TileMap->Map = HeapAlloc(GetProcessHeap(), HEAP_ZERO_MEMORY, TileMap->Height * sizeof(void*));
-    
+    Rows = TileMap->Height;
+
+    Columns = TileMap->Width;
+
+    TileMap->Map = HeapAlloc(GetProcessHeap(), HEAP_ZERO_MEMORY, Rows * sizeof(void*));
+
     if (TileMap->Map == NULL)
     {
         Result = ERROR_OUTOFMEMORY;
 
-        LogMessageA(Error, "[%s] HeapAllco failed! Error 0x%08lx!", __FUNCTION__, Result);
+        LogMessageA(Error, "[%s] HeapAlloc failed! 0x%08lx!", __FUNCTION__, Error);
 
         goto Exit;
     }
 
     for (uint16_t Counter = 0; Counter < TileMap->Height; Counter++)
     {
-        TileMap->Map[Counter] = HeapAlloc(GetProcessHeap, HEAP_ZERO_MEMORY, TileMap->Width * sizeof(void*));
+        TileMap->Map[Counter] = HeapAlloc(GetProcessHeap(), HEAP_ZERO_MEMORY, Columns * sizeof(void*));
 
         if (TileMap->Map[Counter] == NULL)
         {
             Result = ERROR_OUTOFMEMORY;
 
-            LogMessageA(Error, "[%s] HeapAllco failed! Error 0x%08lx!", __FUNCTION__, Result);
+            LogMessageA(Error, "[%s] HeapAlloc failed! 0x%08lx!", __FUNCTION__, Error);
 
             goto Exit;
         }
     }
+
+    NumberOfBytesRead = 0;
+
+    memset(TempBuffer, 0, sizeof(TempBuffer));
+
+    if ((Cursor = strstr(FileBuffer, ",")) == NULL)
+    {
+        Result = ERROR_INVALID_DATA;
+
+        LogMessageA(Error, "[%s] Could not find a comma character! 0x%08lx!", __FUNCTION__, Error);
+
+        goto Exit;
+    }
+
+    while (*Cursor != '\r' && *Cursor != '\n')
+    {
+        if (NumberOfBytesRead > 4)
+        {
+            Result = ERROR_INVALID_DATA;
+
+            LogMessageA(Error, "[%s] Could not find a new line character at the beginning of the tile map data! 0x%08lx!", __FUNCTION__, Error);
+
+            goto Exit;
+        }
+
+        NumberOfBytesRead++;
+
+        Cursor--;
+    }
+
+    Cursor++;
+
+    for (uint16_t Row = 0; Row < Rows; Row++)
+    {
+        for (uint16_t Column = 0; Column < Columns; Column++)
+        {
+            memset(TempBuffer, 0, sizeof(TempBuffer));
+
+        Skip:
+
+            if (*Cursor == '\r' || *Cursor == '\n')
+            {
+                Cursor++;
+
+                goto Skip;
+            }
+
+            for (uint8_t Counter = 0; Counter < 8; Counter++)
+            {
+                if (*Cursor == ',' || *Cursor == '<')
+                {
+                    if (((TileMap->Map[Row][Column]) = (uint8_t)atoi(TempBuffer)) == 0)
+                    {
+                        Result = ERROR_INVALID_DATA;
+
+                        LogMessageA(Error, "[%s] atoi failed while converting tile map data! (The tilemap cannot contain any tiles with the value 0, because atoi cannot differentiate between 0 and failure.) 0x%08lx!", __FUNCTION__, Error);
+
+                        goto Exit;
+                    }
+
+                    Cursor++;
+
+                    break;
+                }
+
+                TempBuffer[Counter] = *Cursor;
+
+                Cursor++;
+            }
+        }
+    }
+
 
 Exit:
     if (FileHandle && FileHandle != INVALID_HANDLE_VALUE)
@@ -2593,5 +2715,103 @@ Exit:
         HeapFree(GetProcessHeap(), 0, FileBuffer);
     }
 
+    return Result;
+}
+
+DWORD LoadOggFromFile(_In_ char* FileName, _Inout_ GAMESOUND* GameSound)
+{
+    DWORD Result = ERROR_SUCCESS;
+
+    HANDLE FileHandle = INVALID_HANDLE_VALUE;
+
+    LARGE_INTEGER FileSize = { 0 };
+
+    void* FileBuffer = NULL;
+
+    DWORD NumberOfBytesRead = 0;
+
+    int SamplesDecoded = 0;
+
+    int Channels = 0;
+
+    int SampleRate = 0;
+
+    short* DecodedAudio = NULL;
+
+    if ((FileHandle = CreateFileA(FileName, GENERIC_READ, FILE_SHARE_READ, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL)) == INVALID_HANDLE_VALUE)
+    {
+        Result = GetLastError();
+
+        LogMessageA(Error, "[%s] CreateFileA failed! Error 0x%08lx!", __FUNCTION__, Result);
+
+        goto Exit;
+    }
+
+    if (GetFileSizeEx(FileHandle, &FileSize) == 0)
+    {
+        Result = GetLastError;
+
+        LogMessageA(Error, "[%s] GetFileSizeEx failed! Error 0x%08lx!", __FUNCTION__, Result);
+
+        goto Exit;
+    }
+
+    LogMessageA(Informational, "[%s] Size of file %s: %lu", __FUNCTION__, FileName, FileSize);
+
+    FileBuffer = HeapAlloc(GetProcessHeap(), HEAP_ZERO_MEMORY, FileSize.QuadPart);
+
+    if (FileBuffer == NULL)
+    {
+        Result = ERROR_OUTOFMEMORY;
+
+        LogMessageA(Error, "[%s] HeapAlloc failed! Error 0x%08lx!", __FUNCTION__, Result);
+
+        goto Exit;
+    }
+
+    if (ReadFile(FileHandle, FileBuffer, (DWORD)FileSize.QuadPart, &NumberOfBytesRead, NULL) == 0)
+    {
+        Result = GetLastError();
+
+        LogMessageA(Error, "[%s] ReadFile failed! Error 0x%08lx!", __FUNCTION__, Result);
+
+        goto Exit;
+    }
+
+    SamplesDecoded = stb_vorbis_decode_memory(FileBuffer, FileSize.QuadPart, &Channels, &SampleRate, &DecodedAudio);
+
+    if (SamplesDecoded < 1)
+    {
+        Result = ERROR_BAD_COMPRESSION_BUFFER;
+
+        LogMessageA(Error, "[%s] stb_vorbis_decode_memory failed! Error 0x%08lx on %s!", __FUNCTION__, Result, FileName);
+
+        goto Exit;
+    }
+
+    GameSound->WaveFormat.wFormatTag = WAVE_FORMAT_PCM;
+
+    GameSound->WaveFormat.nChannels = Channels;
+
+    GameSound->WaveFormat.nSamplesPerSec = SampleRate;
+
+    GameSound->WaveFormat.nAvgBytesPerSec = GameSound->WaveFormat.nSamplesPerSec * GameSound->WaveFormat.nChannels * 2;
+
+    GameSound->WaveFormat.nBlockAlign = GameSound->WaveFormat.nChannels * 2;
+
+    GameSound->WaveFormat.wBitsPerSample = 16;
+
+    GameSound->Buffer.Flags = XAUDIO2_END_OF_STREAM;
+
+    GameSound->Buffer.AudioBytes = SamplesDecoded * GameSound->WaveFormat.nChannels * 2;
+
+    GameSound->Buffer.pAudioData = DecodedAudio;
+
+Exit:
+    if (FileBuffer)
+    {
+        HeapFree(GetProcessHeap(), 0, FileBuffer);
+    }
+    
     return Result;
 }

@@ -181,6 +181,7 @@
     <ClCompile Include="OpeningSplashScreen.c" />
     <ClCompile Include="OptionsScreen.c" />
     <ClCompile Include="Overworld.c" />
+    <ClCompile Include="stb_vorbis.c" />
     <ClCompile Include="TitleScreen.c" />
   </ItemGroup>
   <ItemGroup>
@@ -191,6 +192,8 @@
     <ClInclude Include="OpeningSplashScreen.h" />
     <ClInclude Include="Options.h" />
     <ClInclude Include="Overworld.h" />
+    <ClInclude Include="stb_vorbis.h" />
+    <ClInclude Include="Tiles.h" />
     <ClInclude Include="Title.h" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
