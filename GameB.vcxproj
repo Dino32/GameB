@@ -178,6 +178,7 @@
     <ClCompile Include="ExitYesNoScreen.c" />
     <ClCompile Include="GamepadUnplugged.c" />
     <ClCompile Include="Main.c" />
+    <ClCompile Include="miniz.c" />
     <ClCompile Include="OpeningSplashScreen.c" />
     <ClCompile Include="OptionsScreen.c" />
     <ClCompile Include="Overworld.c" />
@@ -189,6 +190,7 @@
     <ClInclude Include="ExitYesNo.h" />
     <ClInclude Include="GamepadUnplugged.h" />
     <ClInclude Include="Main.h" />
+    <ClInclude Include="miniz.h" />
     <ClInclude Include="OpeningSplashScreen.h" />
     <ClInclude Include="Options.h" />
     <ClInclude Include="Overworld.h" />

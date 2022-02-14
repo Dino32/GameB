@@ -1,5 +1,7 @@
 #include "Main.h" 
 
+#include "miniz.h"
+
 #include "stb_vorbis.h"
 
 INT WINAPI WinMain(_In_ HINSTANCE Instance, _In_ HINSTANCE PreviousInstance,
@@ -43,6 +45,8 @@ INT WINAPI WinMain(_In_ HINSTANCE Instance, _In_ HINSTANCE PreviousInstance,
     gPassablieTiles[0] = TILE_GRASS_01;
 
     gPassablieTiles[1] = TILE_BRIDGE_01;
+
+    gPassablieTiles[2] = TILE_TREE_01;
 
     gCurrentGameState = GAMESTATE_OPENINGSPLASHSCREEN;
 
@@ -154,30 +158,31 @@ INT WINAPI WinMain(_In_ HINSTANCE Instance, _In_ HINSTANCE PreviousInstance,
         goto Exit;
     }
 
-    if (LoadWaveFromFile(".\\Assets\\MenuSelect.wav", &gSoundMenuNavigate) != ERROR_SUCCESS)
+    if (LoadAssetFromArchive(ASSET_FILE, "MenuSelect.wav", RESOURCETYPE_WAV, &gSoundMenuNavigate) != ERROR_SUCCESS)
+    {
+        MessageBoxA(NULL, "LoadAssetFromArchive failed!", "Error!", MB_ICONERROR | MB_OK);
+
+        goto Exit;
+    }
+
+    if (LoadAssetFromArchive(ASSET_FILE, "MenuChooser.wav", RESOURCETYPE_WAV, &gSoundMenuChoose) != ERROR_SUCCESS)
+    {
+        MessageBoxA(NULL, "LoadAssetFromArchive failed!", "Error!", MB_ICONERROR | MB_OK);
+
+            goto Exit;
+    }
+
+
+    if (LoadAssetFromArchive(ASSET_FILE, "Splash.wav", RESOURCETYPE_WAV, &gSoundSplashScreen) != ERROR_SUCCESS)
     {
         MessageBoxA(NULL, "LoadWaveFromFile failed!", "Error!", MB_ICONERROR | MB_OK);
 
         goto Exit;
     }
 
-    if (LoadWaveFromFile(".\\Assets\\MenuChooser.wav", &gSoundMenuChoose) != ERROR_SUCCESS)
+    if (LoadAssetFromArchive(ASSET_FILE, "Fading.wav", RESOURCETYPE_WAV, &gSoundFadingScreen) != ERROR_SUCCESS)
     {
-        MessageBoxA(NULL, "LoadWaveFromFile failed!", "Error!", MB_ICONERROR | MB_OK);
-
-        goto Exit;
-    }
-
-    if (LoadWaveFromFile(".\\Assets\\Splash.wav", &gSoundSplashScreen) != ERROR_SUCCESS)
-    {
-        MessageBoxA(NULL, "LoadWaveFromFile failed!", "Error!", MB_ICONERROR | MB_OK);
-
-        goto Exit;
-    }
-
-    if (LoadWaveFromFile(".\\Assets\\Fading.wav", &gSoundFadingScreen) != ERROR_SUCCESS)
-    {
-        MessageBoxA(NULL, "LoadWaveFromFile failed!", "Error!", MB_ICONERROR | MB_OK);
+        MessageBoxA(NULL, "LoadAssetFromArchive failed!", "Error!", MB_ICONERROR | MB_OK);
 
         goto Exit;
     }
@@ -2378,6 +2383,201 @@ Exit:
     return Result;
 }
 
+DWORD LoadWaveFromMemory(_In_ void* Buffer, _Inout_ GAMESOUND* GameSound)
+{
+    DWORD Result = ERROR_SUCCESS;
+
+    DWORD RIFF = 0;
+
+    //DWORD NumberOfBytesRead = 0;
+
+    uint16_t DataChunkOffset = 0;
+
+    DWORD DataChunkSearcher = 0;
+
+    BOOL DataChunkFound = FALSE;
+
+    DWORD DataChunkSize = 0;
+
+    //void* AudioData = NULL;
+
+    //HANDLE FileHandle = INVALID_HANDLE_VALUE;
+
+    /*if ((FileHandle = CreateFileA(FileName, GENERIC_READ, FILE_SHARE_READ, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL)) == INVALID_HANDLE_VALUE)
+    {
+        Result = GetLastError();
+
+        LogMessageA(Error, "[%s] CreateFileA failed! Error 0x%08lx!", __FUNCTION__, Result);
+
+        goto Exit;
+    }*/
+
+    memcpy(&RIFF, Buffer, sizeof(DWORD));
+
+    /*if (ReadFile(FileHandle, &RIFF, sizeof(DWORD), &NumberOfBytesRead, NULL) == 0)
+    {
+        Result = GetLastError();
+
+        LogMessageA(Error, "[%s] ReadFile failed! Error 0x%08lx!", __FUNCTION__, Result);
+
+        goto Exit;
+    }*/
+
+    if (RIFF != 0x46464952) // "RIFF" backwards
+    {
+        Result = ERROR_FILE_INVALID;
+
+        LogMessageA(Error, "[%s] First four bytes of memory buffer are not RIFF! Error 0x%08lx!", __FUNCTION__, Result);
+
+        goto Exit;
+    }
+
+    /*if (SetFilePointer(FileHandle, 20, NULL, FILE_BEGIN) == INVALID_SET_FILE_POINTER)
+    {
+        Result = GetLastError();
+
+        LogMessageA(Error, "[%s] SetFilePointer failed! Error 0x%08lx!", __FUNCTION__, Result);
+
+        goto Exit;
+    }*/
+
+    memcpy(&GameSound->WaveFormat, (BYTE*)Buffer + 20, sizeof(WAVEFORMATEX));
+
+    /*if (ReadFile(FileHandle, &GameSound->WaveFormat, sizeof(WAVEFORMATEX), &NumberOfBytesRead, NULL) == 0)
+    {
+        Result = GetLastError();
+
+        LogMessageA(Error, "[%s] CreateFileA failed! Error 0x%08lx!", __FUNCTION__, Result);
+
+        goto Exit;
+    }*/
+
+    if (GameSound->WaveFormat.nBlockAlign != ((GameSound->WaveFormat.nChannels * GameSound->WaveFormat.wBitsPerSample) / 8) ||
+        (GameSound->WaveFormat.wFormatTag != WAVE_FORMAT_PCM) || (GameSound->WaveFormat.wBitsPerSample != 16))
+    {
+        Result = ERROR_DATATYPE_MISMATCH;
+
+        LogMessageA(Error, "[%s] This wave data in the memory buffer did not meet the format requirements! Error 0x%08lx!", __FUNCTION__, Result);
+
+        goto Exit;
+    }
+
+    while (DataChunkFound == FALSE)
+    {
+        /*if (SetFilePointer(FileHandle, DataChunkOffset, NULL, FILE_BEGIN) == INVALID_SET_FILE_POINTER)
+        {
+            Result = GetLastError();
+
+            LogMessageA(Error, "[%s] SetFilePointer failed! Error 0x%08lx!", __FUNCTION__, Result);
+
+            goto Exit;
+        }
+
+        if (ReadFile(FileHandle, &DataChunkSearcher, sizeof(DWORD), &NumberOfBytesRead, NULL) == 0)
+        {
+            Result = GetLastError();
+
+            LogMessageA(Error, "[%s] CreateFileA failed! Error 0x%08lx!", __FUNCTION__, Result);
+
+            goto Exit;
+        }*/
+
+        memcpy(&DataChunkSearcher, (BYTE*)Buffer + DataChunkOffset, sizeof(DWORD));
+
+        if (DataChunkSearcher == 0x61746164) // 'data' backwards
+        {
+            DataChunkFound == TRUE;
+
+            break;
+        }
+        else
+        {
+            DataChunkOffset += 4;
+        }
+
+        if (DataChunkOffset > 256)
+        {
+            Result = ERROR_DATATYPE_MISMATCH;
+
+            LogMessageA(Error, "[%s] DataChunk not found! Error 0x%08lx!", __FUNCTION__, Result);
+
+            goto Exit;
+        }
+    }
+
+    /*if (SetFilePointer(FileHandle, DataChunkOffset + 4, NULL, FILE_BEGIN) == INVALID_SET_FILE_POINTER)
+    {
+        Result = GetLastError();
+
+        LogMessageA(Error, "[%s] SetFilePointer failed! Error 0x%08lx!", __FUNCTION__, Result);
+
+        goto Exit;
+    }
+
+    if (ReadFile(FileHandle, &DataChunkSize, sizeof(DWORD), &NumberOfBytesRead, NULL) == 0)
+    {
+        Result = GetLastError();
+
+        LogMessageA(Error, "[%s] CreateFileA failed! Error 0x%08lx!", __FUNCTION__, Result);
+
+        goto Exit;
+    }*/
+
+    memcpy(&DataChunkSize, (BYTE*)Buffer + DataChunkOffset + 4, sizeof(DWORD));
+
+    /*AudioData = HeapAlloc(GetProcessHeap(), HEAP_ZERO_MEMORY, DataChunkSize);
+
+    if (AudioData == NULL)
+    {
+        Result = ERROR_NOT_ENOUGH_MEMORY;
+
+        LogMessageA(Error, "[%s] HeapAlloc failed! Error 0x%08lx!", __FUNCTION__, Result);
+
+        goto Exit;
+    }*/
+
+    GameSound->Buffer.Flags = XAUDIO2_END_OF_STREAM;
+
+    GameSound->Buffer.AudioBytes = DataChunkSize;
+
+    /*if (SetFilePointer(FileHandle, DataChunkOffset + 8, NULL, FILE_BEGIN) == INVALID_SET_FILE_POINTER)
+    {
+        Result = GetLastError();
+
+        LogMessageA(Error, "[%s] SetFilePointer failed! Error 0x%08lx!", __FUNCTION__, Result);
+
+        goto Exit;
+    }
+
+    if (ReadFile(FileHandle, AudioData, DataChunkSize, &NumberOfBytesRead, NULL) == 0)
+    {
+        Result = GetLastError();
+
+        LogMessageA(Error, "[%s] CreateFileA failed! Error 0x%08lx!", __FUNCTION__, Result);
+
+        goto Exit;
+    }*/
+
+    GameSound->Buffer.pAudioData = (BYTE*)Buffer + DataChunkOffset + 8;
+
+Exit:
+    if (Result == ERROR_SUCCESS)
+    {
+        LogMessageA(Informational, "[%s] Successfully loaded wav from memory %s!", __FUNCTION__);
+    }
+    else
+    {
+        LogMessageA(Error, "[%s] Failed to load wav from memory! Error 0x%08lx!", __FUNCTION__, Result);
+    }
+
+    /*if (FileHandle != NULL && FileHandle != INVALID_HANDLE_VALUE)
+    {
+        CloseHandle(FileHandle);
+    }*/
+
+    return Result;
+}
+
 void PlayGameSound(_In_ GAMESOUND* GameSound)
 {
     gXAudioSFXSorceVoice[gSFXSourceVoiceSelector]->lpVtbl->SubmitSourceBuffer(gXAudioSFXSorceVoice[gSFXSourceVoiceSelector], &GameSound->Buffer, NULL);
@@ -2813,5 +3013,112 @@ Exit:
         HeapFree(GetProcessHeap(), 0, FileBuffer);
     }
     
+    return Result;
+}
+
+DWORD LoadAssetFromArchive(_In_ char* ArchiveName, _In_ char* AssetFileName, _In_ RESOURCETYPE ResourceType, _Inout_ void* Resource)
+{
+    DWORD Result = ERROR_SUCCESS;
+
+    mz_zip_archive Archive = { 0 };
+
+    BYTE* DecompressedBuffer = NULL;
+
+    size_t DecompressedSize = 0;
+
+    BOOL FileFoundInArchive = FALSE;
+
+    if ((mz_zip_reader_init_file(&Archive, ArchiveName, 0)) == FALSE)
+    {
+        Result = mz_zip_get_last_error(&Archive);
+
+        LogMessageA(Error, "[%s] mz_zip_reader_init_file failed! Error 0x%08lx!", __FUNCTION__, Result);
+
+        goto Exit;
+    }
+
+    LogMessageA(Informational, "[%s] Archive %s opened.", __FUNCTION__, ArchiveName);
+
+    // Iterate through each file in the archive until we find file we are looking for
+
+    for (int FileIndex = 0; FileIndex < (int)mz_zip_reader_get_num_files(&Archive); FileIndex++)
+    {
+        mz_zip_archive_file_stat CompressedFileStatistics = { 0 };
+
+        if (mz_zip_reader_file_stat(&Archive, FileIndex, &CompressedFileStatistics) == MZ_FALSE)
+        {
+            Result = mz_zip_get_last_error(&Archive);
+
+            LogMessageA(Error, "[%s] mz_zip_reader_file_stat failed! Error 0x%08lx! Archive: %s, File: %s", __FUNCTION__, Result, ArchiveName, AssetFileName);
+
+            goto Exit;
+        }
+
+        if (_stricmp(CompressedFileStatistics.m_filename, AssetFileName) == 0)
+        {
+
+            LogMessageA(Informational, "[%s] File %s found in asset file %s and extracted to heap.", __FUNCTION__, AssetFileName, ArchiveName);
+
+            FileFoundInArchive = TRUE;
+
+            if ((DecompressedBuffer = mz_zip_reader_extract_to_heap(&Archive, FileIndex, &DecompressedSize, 0)) == NULL)
+            {
+                Result = mz_zip_get_last_error(&Archive);
+
+                LogMessageA(Error, "[%s] mz_zip_reader_extract_file_to_heap failed! Error 0x%08lx! Archive: %s, File: %s", __FUNCTION__, Result, ArchiveName, AssetFileName);
+
+                goto Exit;
+            }
+
+            break;
+        }
+    }
+
+    if (FileFoundInArchive == FALSE)
+    {
+        Result = ERROR_FILE_NOT_FOUND;
+
+        LogMessageA(Error, "[%s] File %s was not found in archive %s!", __FUNCTION__, AssetFileName, ArchiveName);
+
+        goto Exit;
+    }
+
+    switch (ResourceType)
+    {
+        case RESOURCETYPE_WAV:
+        {
+            Result = LoadWaveFromMemory(DecompressedBuffer, Resource);
+
+            break;
+        }
+        case RESOURCETYPE_OGG:
+        {
+
+
+            break;
+        }
+        case RESOURCETYPE_TILEMAP:
+        {
+
+
+            break;
+        }
+        case RESOURCETYPE_BMPX:
+        {
+
+
+            break;
+        }
+        default:
+        {
+            ASSERT(FALSE, "Unknown resource type.")
+        }
+    }
+
+
+Exit:
+
+    mz_zip_reader_end(&Archive);
+
     return Result;
 }

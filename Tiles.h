@@ -6,3 +6,4 @@
 
 #define TILE_BRIDGE_01 3
 
+#define TILE_TREE_01 4

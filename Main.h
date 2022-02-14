@@ -146,7 +146,21 @@ typedef enum GAMESATE
 
 } GAMESTATE;
 
+typedef enum RESOURCETYPE
+{
+	RESOURCETYPE_WAV,
+
+	RESOURCETYPE_OGG,
+
+	RESOURCETYPE_TILEMAP,
+
+	RESOURCETYPE_BMPX
+
+} RESOURCETYPE;
+
 #define LOG_FILE_NAME "GAMEB.log"
+
+#define ASSET_FILE "Assets.dat"
 
 
 
@@ -402,7 +416,7 @@ GAMEMAP gOverWorld01;
 
 UPOINT gCamera;
 
-uint8_t gPassablieTiles[2];
+uint8_t gPassablieTiles[3];
 
 INT __stdcall WinMain(HINSTANCE Instance, HINSTANCE PreviousInstance, PSTR CommandLine, INT CommandShow);
 
@@ -440,6 +454,8 @@ HRESULT InitializeSoundEngine(void);
 
 DWORD LoadWaveFromFile(_In_ char* FileName , _Inout_ GAMESOUND* GameSound);
 
+DWORD LoadWaveFromMemory(_In_ void* Buffer, _Inout_ GAMESOUND* GameSound);
+
 void PlayGameSound(_In_ GAMESOUND* GameSound);
 
 void PlayGameMusic(_In_ GAMESOUND* GameSound);
@@ -447,6 +463,10 @@ void PlayGameMusic(_In_ GAMESOUND* GameSound);
 DWORD LoadTilemapFromFile(_In_ char* FileName, _Inout_ TILEMAP* TileMap);
 
 DWORD LoadOggFromFile(_In_ char* FileName, _Inout_ GAMESOUND* GameSound);
+
+DWORD LoadAssetFromArchive(_In_ char* ArchiveName, _In_ char* AssetFileName, _In_ RESOURCETYPE ResourceType, _Inout_ void* Resource);
+
+
 
 #ifdef SIMD
 void ClearScreen(_In_ __m128i* Color);
