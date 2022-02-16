@@ -7,9 +7,21 @@ void PPI_OpeningSplasheScreen(void)
 {
     if (gGameInput.EscapeKeyIsDown && !gGameInput.EscapeKeyWasDown)
     {
-        gCurrentGameState = GAMESTATE_TITLESCREEN;
+        if (WaitForSingleObject(gAssetLoadingThreadHandle, 0) == WAIT_OBJECT_0)
+        {
+            DWORD ThreadExitCode = ERROR_SUCCESS;
 
-        gPreviousGameState = GAMESTATE_OPENINGSPLASHSCREEN;
+            GetExitCodeThread(gAssetLoadingThreadHandle, &ThreadExitCode);
+
+            if (ThreadExitCode == ERROR_SUCCESS)
+            {
+                gPreviousGameState = gCurrentGameState;
+
+                gCurrentGameState = GAMESTATE_TITLESCREEN;
+
+            }
+
+        }
     }
 }
 
@@ -23,6 +35,14 @@ void DrawOpeningSplashScreen(void)
 
     static BOOL FadingSoundTunredOn = FALSE;
 
+    static uint64_t Blink;
+
+
+    if (WaitForSingleObject(gEssentialAssetsLoadedEvent, 0) != WAIT_OBJECT_0)
+    {
+        return;
+    }
+
     if (gPerformanceData.TotalFramesRednered > (LastFrameSeen + 1)) // we have left the screen and came bac
     {
         LocalFrameCounter = 0;
@@ -32,6 +52,18 @@ void DrawOpeningSplashScreen(void)
     {
         PlayGameSound(&gSoundSplashScreen);
     }
+
+    if ((Blink % 10) == 0)
+    {
+        BlitStringToBuffer("o", &g6x7Font, (PIXEL32) { 0x00, 0xff, 0x00, 0xff }, GAME_RES_WIDTH - 6, GAME_RES_HEIGHT - 7);
+    }
+    
+    if ((Blink % 30) == 0)
+    {
+        BlitStringToBuffer("o", &g6x7Font, (PIXEL32) { 0x00, 0x00, 0x00, 0xff }, GAME_RES_WIDTH - 6, GAME_RES_HEIGHT - 7);
+    }
+
+    Blink++;
 
     if (LocalFrameCounter > 60)
     {
@@ -45,11 +77,28 @@ void DrawOpeningSplashScreen(void)
         }
 
 
-        if (LocalFrameCounter == 260)
+        if (LocalFrameCounter >= 260)
         {
-            gPreviousGameState = gCurrentGameState;
+            if (WaitForSingleObject(gAssetLoadingThreadHandle, 0) == WAIT_OBJECT_0)
+            {
+                DWORD ThreadExitCode = ERROR_SUCCESS;
 
-            gCurrentGameState = GAMESTATE_TITLESCREEN;
+                GetExitCodeThread(gAssetLoadingThreadHandle, &ThreadExitCode);
+
+                if (ThreadExitCode != ERROR_SUCCESS)
+                {
+                    LogMessageA(Error, "[%s] Asset Loading Thread failed with 0x%08lx!", __FUNCTION__, ThreadExitCode);
+                
+                    gGameIsRunning = FALSE;
+
+                    MessageBoxA(gGameWindow, "Asset Loading Failed.", "Error!", MB_ICONERROR | MB_OK);
+                    
+                    return;
+                }
+                gPreviousGameState = gCurrentGameState;
+
+                gCurrentGameState = GAMESTATE_TITLESCREEN;
+            }
         }
 
         BlitStringToBuffer("- Game Studio -", &g6x7Font, ((PIXEL32){0xFF - BrightnessModifier, 0xFF - BrightnessModifier, 0xFF - BrightnessModifier, 0xFF}), (GAME_RES_WIDTH / 2) - (15 * 6) / 2, 110);

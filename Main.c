@@ -4,12 +4,18 @@
 
 #include "stb_vorbis.h"
 
+#include "Overworld.h"
+
+// This critical section is used to synchronize logging between multiple threads
+CRITICAL_SECTION gLogCritSec;
+
 INT WINAPI WinMain(_In_ HINSTANCE Instance, _In_ HINSTANCE PreviousInstance,
     _In_ PSTR CommandLine, _In_ INT CommandShow) {
 
     UNREFERENCED_PARAMETER(PreviousInstance);
     UNREFERENCED_PARAMETER(CommandLine);
     UNREFERENCED_PARAMETER(Instance);
+
 
     MSG Message = { 0 };
 
@@ -39,16 +45,16 @@ INT WINAPI WinMain(_In_ HINSTANCE Instance, _In_ HINSTANCE PreviousInstance,
 
     HANDLE ProcessHandle = GetCurrentProcess();
 
+    InitializeGlobals();
 
-    gGamepadID = -1;
 
-    gPassablieTiles[0] = TILE_GRASS_01;
+    //This critical section is used to synchronize access to the log file vis a vis
+    // LogMessageA when used by mutiple threads simultaneously
+    InitializeCriticalSectionAndSpinCount(&gLogCritSec, 0x400);
 
-    gPassablieTiles[1] = TILE_BRIDGE_01;
-
-    gPassablieTiles[2] = TILE_TREE_01;
-
-    gCurrentGameState = GAMESTATE_OPENINGSPLASHSCREEN;
+    // This event gets signalled after the most essential assets have been loaded 
+    // "Essential" means the assets required to render the splash screen
+    gEssentialAssetsLoadedEvent = CreateEventA(NULL, TRUE, FALSE, "gEssentialAssetsLoadedEvent");
 
 
     if (LoadRegistryParameters() != ERROR_SUCCESS)
@@ -124,29 +130,9 @@ INT WINAPI WinMain(_In_ HINSTANCE Instance, _In_ HINSTANCE PreviousInstance,
         goto Exit;
     }
 
-    if ((Load32BppBitmapFromFile(".\\Assets\\6x7Font.bmpx", &g6x7Font)) != ERROR_SUCCESS)
+    if ((gAssetLoadingThreadHandle = CreateThread(NULL, 0, AssetLoadingThreadProc, NULL, 0, NULL)) == NULL)
     {
-        LogMessageA(Error, "[%s] Load32BppBitmapFromFile failed!", __FUNCTION__);
-
-        MessageBoxA(NULL, "Load32BppBitmapFromFile failed!", "Error!", MB_ICONERROR | MB_OK);
-
-        goto Exit;
-    }
-
-    if ((Load32BppBitmapFromFile(".\\Assets\\Maps\\Overworld01.bmpx", &gOverWorld01.GameBitmap)) != ERROR_SUCCESS)
-    {
-        LogMessageA(Error, "[%s] Load32BppBitmapFromFile failed!", __FUNCTION__);
-
-        MessageBoxA(NULL, "Load32BppBitmapFromFile failed!", "Error!", MB_ICONERROR | MB_OK);
-
-        goto Exit;
-    }
-
-    if (LoadTilemapFromFile(".\\Assets\\Maps\\Overworld01.tmx", &gOverWorld01.TIleMap) != ERROR_SUCCESS)
-    {
-        LogMessageA(Error, "[%s] LoadTilemapFromFile failed!", __FUNCTION__);
-
-        MessageBoxA(NULL, "LoadTilemapFromFile failed!", "Error!", MB_ICONERROR | MB_OK);
+        MessageBoxA(NULL, "CreateThread failed!", "Error!", MB_ICONERROR | MB_OK);
 
         goto Exit;
     }
@@ -154,42 +140,6 @@ INT WINAPI WinMain(_In_ HINSTANCE Instance, _In_ HINSTANCE PreviousInstance,
     if (InitializeSoundEngine() != S_OK)
     {
         MessageBoxA(NULL, "InitializeSoundEngine failed!", "Error!", MB_ICONERROR | MB_OK);
-
-        goto Exit;
-    }
-
-    if (LoadAssetFromArchive(ASSET_FILE, "MenuSelect.wav", RESOURCETYPE_WAV, &gSoundMenuNavigate) != ERROR_SUCCESS)
-    {
-        MessageBoxA(NULL, "LoadAssetFromArchive failed!", "Error!", MB_ICONERROR | MB_OK);
-
-        goto Exit;
-    }
-
-    if (LoadAssetFromArchive(ASSET_FILE, "MenuChooser.wav", RESOURCETYPE_WAV, &gSoundMenuChoose) != ERROR_SUCCESS)
-    {
-        MessageBoxA(NULL, "LoadAssetFromArchive failed!", "Error!", MB_ICONERROR | MB_OK);
-
-            goto Exit;
-    }
-
-
-    if (LoadAssetFromArchive(ASSET_FILE, "Splash.wav", RESOURCETYPE_WAV, &gSoundSplashScreen) != ERROR_SUCCESS)
-    {
-        MessageBoxA(NULL, "LoadWaveFromFile failed!", "Error!", MB_ICONERROR | MB_OK);
-
-        goto Exit;
-    }
-
-    if (LoadAssetFromArchive(ASSET_FILE, "Fading.wav", RESOURCETYPE_WAV, &gSoundFadingScreen) != ERROR_SUCCESS)
-    {
-        MessageBoxA(NULL, "LoadAssetFromArchive failed!", "Error!", MB_ICONERROR | MB_OK);
-
-        goto Exit;
-    }
-
-    if (LoadOggFromFile(".\\Assets\\Overworld01.ogg", &gMusicOverworld01) != ERROR_SUCCESS)
-    {
-        MessageBoxA(NULL, "LoadOggFromFile failed!", "Error!", MB_ICONERROR | MB_OK);
 
         goto Exit;
     }
@@ -505,6 +455,8 @@ void ProcessPlayerInput(void)
     
     gGameInput.ChooseKeyIsDown = GetAsyncKeyState(VK_RETURN);
 
+    gGameInput.PortalIsDown = GetAsyncKeyState('P');
+
     if (gGamepadID >= 0)
     {
         if (XInputGetState(gGamepadID, &gGamepadState) == ERROR_SUCCESS)
@@ -610,6 +562,8 @@ void ProcessPlayerInput(void)
     gGameInput.ChooseKeyWasDown = gGameInput.ChooseKeyIsDown;
 
     gGameInput.EscapeKeyWasDown = gGameInput.EscapeKeyIsDown;
+
+    gGameInput.PortalWasDown = gGameInput.PortalIsDown;
 }
 
 DWORD Load32BppBitmapFromFile(_In_ char* FileName, _Inout_ GAMEBITMAP* GameBitmap)
@@ -718,13 +672,13 @@ DWORD InitializeHero(void)
 {
     DWORD Error = ERROR_SUCCESS;
 
-    gPlayer.ScreenPos.x = 192;
+    gPlayer.ScreenPos.x = 64;
 
-    gPlayer.ScreenPos.y = 64;
+    gPlayer.ScreenPos.y = 80;
 
-    gPlayer.WorldPos.x = 192;
+    gPlayer.WorldPos.x = 64;
 
-    gPlayer.WorldPos.y = 64;
+    gPlayer.WorldPos.y = 80;
 
     gPlayer.CurrentArmor = SUIT_0;
 
@@ -732,100 +686,20 @@ DWORD InitializeHero(void)
 
     gPlayer.MovementRemaining = 0;
 
-    if ((Error = Load32BppBitmapFromFile(".\\Assets\\Hero_Suit0_Down_Standing.bmpx", &gPlayer.Sprite[SUIT_0][FACING_DOWN_0])) != ERROR_SUCCESS)
-    {
-        MessageBoxA(NULL, "Load32BppBitmapFromFile failed!", "Error!", MB_ICONEXCLAMATION | MB_OK);
+    gCamera.x = 0;
 
-        goto Exit;
-    }
+    gCamera.y = 0;
 
-    if ((Error = Load32BppBitmapFromFile(".\\Assets\\Hero_Suit0_Down_Walk1.bmpx", &gPlayer.Sprite[SUIT_0][FACING_DOWN_1])) != ERROR_SUCCESS)
-    {
-        MessageBoxA(NULL, "Load32BppBitmapFromFile failed!", "Error!", MB_ICONEXCLAMATION | MB_OK);
-
-        goto Exit;
-    }
-
-    if ((Error = Load32BppBitmapFromFile(".\\Assets\\Hero_Suit0_Down_Walk2.bmpx", &gPlayer.Sprite[SUIT_0][FACING_DOWN_2])) != ERROR_SUCCESS)
-    {
-        MessageBoxA(NULL, "Load32BppBitmapFromFile failed!", "Error!", MB_ICONEXCLAMATION | MB_OK);
-
-        goto Exit;
-    }
-
-    if ((Error = Load32BppBitmapFromFile(".\\Assets\\Hero_Suit0_Left_Standing.bmpx", &gPlayer.Sprite[SUIT_0][FACING_LEFT_0])) != ERROR_SUCCESS)
-    {
-        MessageBoxA(NULL, "Load32BppBitmapFromFile failed!", "Error!", MB_ICONEXCLAMATION | MB_OK);
-
-        goto Exit;
-    }
-
-    if ((Error = Load32BppBitmapFromFile(".\\Assets\\Hero_Suit0_Left_Walk1.bmpx", &gPlayer.Sprite[SUIT_0][FACING_LEFT_1])) != ERROR_SUCCESS)
-    {
-        MessageBoxA(NULL, "Load32BppBitmapFromFile failed!", "Error!", MB_ICONEXCLAMATION | MB_OK);
-
-        goto Exit;
-    }
-
-    if ((Error = Load32BppBitmapFromFile(".\\Assets\\Hero_Suit0_Left_Walk2.bmpx", &gPlayer.Sprite[SUIT_0][FACING_LEFT_2])) != ERROR_SUCCESS)
-    {
-        MessageBoxA(NULL, "Load32BppBitmapFromFile failed!", "Error!", MB_ICONEXCLAMATION | MB_OK);
-
-        goto Exit;
-    }
-
-    if ((Error = Load32BppBitmapFromFile(".\\Assets\\Hero_Suit0_Right_Standing.bmpx", &gPlayer.Sprite[SUIT_0][FACING_RIGHT_0])) != ERROR_SUCCESS)
-    {
-        MessageBoxA(NULL, "Load32BppBitmapFromFile failed!", "Error!", MB_ICONEXCLAMATION | MB_OK);
-
-        goto Exit;
-    }
-
-    if ((Error = Load32BppBitmapFromFile(".\\Assets\\Hero_Suit0_Right_Walk1.bmpx", &gPlayer.Sprite[SUIT_0][FACING_RIGHT_1])) != ERROR_SUCCESS)
-    {
-        MessageBoxA(NULL, "Load32BppBitmapFromFile failed!", "Error!", MB_ICONEXCLAMATION | MB_OK);
-
-        goto Exit;
-    }
-
-    if ((Error = Load32BppBitmapFromFile(".\\Assets\\Hero_Suit0_Right_Walk2.bmpx", &gPlayer.Sprite[SUIT_0][FACING_RIGHT_2])) != ERROR_SUCCESS)
-    {
-        MessageBoxA(NULL, "Load32BppBitmapFromFile failed!", "Error!", MB_ICONEXCLAMATION | MB_OK);
-
-        goto Exit;
-    }
-
-    if ((Error = Load32BppBitmapFromFile(".\\Assets\\Hero_Suit0_Up_Standing.bmpx", &gPlayer.Sprite[SUIT_0][FACING_UPWARD_0])) != ERROR_SUCCESS)
-    {
-        MessageBoxA(NULL, "Load32BppBitmapFromFile failed!", "Error!", MB_ICONEXCLAMATION | MB_OK);
-
-        goto Exit;
-    }
-
-    if ((Error = Load32BppBitmapFromFile(".\\Assets\\Hero_Suit0_Up_Walk1.bmpx", &gPlayer.Sprite[SUIT_0][FACING_UPWARD_1])) != ERROR_SUCCESS)
-    {
-        MessageBoxA(NULL, "Load32BppBitmapFromFile failed!", "Error!", MB_ICONEXCLAMATION | MB_OK);
-
-        goto Exit;
-    }
-
-    if ((Error = Load32BppBitmapFromFile(".\\Assets\\Hero_Suit0_Up_Walk2.bmpx", &gPlayer.Sprite[SUIT_0][FACING_UPWARD_2])) != ERROR_SUCCESS)
-    {
-        MessageBoxA(NULL, "Load32BppBitmapFromFile failed!", "Error!", MB_ICONEXCLAMATION | MB_OK);
-
-        goto Exit;
-    }
 
 Exit:
     return Error;
 }
 
-void Blit32BppBitmapToBuffer(_In_ GAMEBITMAP* GameBitmap, _In_ uint16_t x, _In_ uint16_t y)
+void Blit32BppBitmapToBuffer(_In_ GAMEBITMAP* GameBitmap, _In_ int16_t x, _In_ int16_t y)
 {
     int32_t StartingScreenPixel = ((GAME_RES_WIDTH * GAME_RES_HEIGHT) - GAME_RES_WIDTH) - (GAME_RES_WIDTH * y) + x;
 
     int32_t StartingBitmapPixel = ((GameBitmap->Bitmapinfo.bmiHeader.biHeight * GameBitmap->Bitmapinfo.bmiHeader.biWidth) - GameBitmap->Bitmapinfo.bmiHeader.biWidth);
-
 
     int32_t MemoryOffset = 0;
 
@@ -833,12 +707,45 @@ void Blit32BppBitmapToBuffer(_In_ GAMEBITMAP* GameBitmap, _In_ uint16_t x, _In_ 
 
     PIXEL32 BitmapPixel = { 0 };
 
-    //PIXEL32 BackgroundPixel = { 0 };
-
     for (int16_t YPixel = 0; YPixel < (GameBitmap->Bitmapinfo.bmiHeader.biHeight); YPixel++)
     {
         for (int16_t XPixel = 0; XPixel < (GameBitmap->Bitmapinfo.bmiHeader.biWidth); XPixel++)
-        {
+        { 
+            if ((x < 1) || (x > GAME_RES_WIDTH - GameBitmap->Bitmapinfo.bmiHeader.biWidth) ||
+                (y > 1) || (y > GAME_RES_HEIGHT - GameBitmap->Bitmapinfo.bmiHeader.biHeight))
+            {
+                if (x < 1)
+                {
+                    if (XPixel < -x)
+                    {
+                        break;
+                    }
+                }
+                else if (x > GAME_RES_WIDTH - GameBitmap->Bitmapinfo.bmiHeader.biWidth)
+                {
+                    if (XPixel > GAME_RES_WIDTH - x - 1)
+                    {
+                        break;
+                    }
+                }
+
+                if (y < 1)
+                {
+                    if (YPixel < -y)
+                    {
+                        break;
+                    }
+                }
+                else if (y > GAME_RES_HEIGHT - GameBitmap->Bitmapinfo.bmiHeader.biHeight)
+                {
+                    if (YPixel > GAME_RES_HEIGHT - y - 1)
+                    {
+                        break;
+                    }
+                }
+            }
+
+
             MemoryOffset = StartingScreenPixel + XPixel - (GAME_RES_WIDTH * YPixel);
 
             BitmapOffset = StartingBitmapPixel + XPixel - (GameBitmap->Bitmapinfo.bmiHeader.biWidth * YPixel);
@@ -2011,6 +1918,8 @@ void LogMessageA(_In_ DWORD LogLevel, _In_ char* Message, _In_ ...)
 
     _snprintf_s(DateTimeString, sizeof(DateTimeString), _TRUNCATE, "\r\n[%02u/%02u/%u %02u:%02u:%02u.%03u]", Time.wMonth, Time.wDay, Time.wYear, Time.wHour, Time.wMinute, Time.wSecond, Time.wMilliseconds);
 
+    EnterCriticalSection(&gLogCritSec);
+
     if ((LogFileHandle = CreateFileA(LOG_FILE_NAME, FILE_APPEND_DATA, FILE_SHARE_READ, NULL, OPEN_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL)) == INVALID_HANDLE_VALUE)
     {
         ASSERT(FALSE, "Failed to acces log file!");
@@ -2030,6 +1939,8 @@ void LogMessageA(_In_ DWORD LogLevel, _In_ char* Message, _In_ ...)
     {
         CloseHandle(LogFileHandle);
     }
+
+    LeaveCriticalSection(&gLogCritSec);
 }
 
 void DrawDebugInfo()
@@ -2087,6 +1998,10 @@ void DrawDebugInfo()
     snprintf(DebugTextBuffer, sizeof(DebugTextBuffer), "CameraXY:  %d, %d", gCamera.x, gCamera.y);
 
     BlitStringToBuffer(DebugTextBuffer, &g6x7Font, White, 0, 88);
+
+    snprintf(DebugTextBuffer, sizeof(DebugTextBuffer), "Movment:  %d", gPlayer.MovementRemaining);
+
+    BlitStringToBuffer(DebugTextBuffer, &g6x7Font, White, 0, 100);
 }
 
 void FindFirstConnctedGamepad(void)
@@ -2576,6 +2491,358 @@ Exit:
     }*/
 
     return Result;
+}
+
+DWORD LoadOggFromMemory(_In_ void* Buffer, _In_ uint32_t BufferSize, _Inout_ GAMESOUND* GameSound)
+{
+    DWORD Result = ERROR_SUCCESS;
+
+    int SamplesDecoded = 0;
+
+    int Channels = 0;
+
+    int SampleRate = 0;
+
+    short* DecodedAudio = NULL;
+
+    SamplesDecoded = stb_vorbis_decode_memory(Buffer, (int)BufferSize, &Channels, &SampleRate, &DecodedAudio);
+
+    if (SamplesDecoded < 1)
+    {
+        Result = ERROR_BAD_COMPRESSION_BUFFER;
+
+        LogMessageA(Error, "[%s] stb_vorbis_decode_memory failed! Error 0x%08lx!", __FUNCTION__, Result);
+
+        goto Exit;
+    }
+
+    GameSound->WaveFormat.wFormatTag = WAVE_FORMAT_PCM;
+
+    GameSound->WaveFormat.nChannels = (WORD)Channels;
+
+    GameSound->WaveFormat.nSamplesPerSec = SampleRate;
+
+    GameSound->WaveFormat.nAvgBytesPerSec = GameSound->WaveFormat.nSamplesPerSec * GameSound->WaveFormat.nChannels * 2;
+
+    GameSound->WaveFormat.nBlockAlign = GameSound->WaveFormat.nChannels * 2;
+
+    GameSound->WaveFormat.wBitsPerSample = 16;
+
+    GameSound->Buffer.Flags = XAUDIO2_END_OF_STREAM;
+
+    GameSound->Buffer.AudioBytes = SamplesDecoded * GameSound->WaveFormat.nChannels * 2;
+
+    GameSound->Buffer.pAudioData = (const BYTE*)DecodedAudio;
+
+Exit:
+    return Result;
+}
+
+DWORD LoadTilemapFromMemory(_In_ void* Buffer, uint32_t BufferSize, _Inout_ TILEMAP* TileMap)
+{
+    DWORD Result = ERROR_SUCCESS;
+
+    DWORD NumberOfBytesRead = 0;
+
+    char* Cursor = NULL;
+
+    char TempBuffer[16] = { 0 };
+
+    uint16_t Rows = 0;
+
+    uint16_t Columns = 0;
+
+    if (BufferSize < 300)
+    {
+        Result = GetLastError();
+
+        LogMessageA(Error, "[%s] Buffer is too small to be a valid tilemap! Error 0x%08lx!", __FUNCTION__, Result);
+
+        goto Exit;
+    }
+
+    if ((Cursor = strstr(Buffer, "width=")) == NULL)
+    {
+        Result = ERROR_INVALID_DATA;
+
+        LogMessageA(Error, "[%s] Could not locate the width attribute! Error 0x%08lx!", __FUNCTION__, Result);
+
+        goto Exit;
+    }
+
+    NumberOfBytesRead = 0;
+
+    for (;;)
+    {
+        if (NumberOfBytesRead > 8)
+        {
+            // We shoudl have found opening quotation mark
+
+            Result = ERROR_INVALID_DATA;
+
+            LogMessageA(Error, "[%s] Could not locate the opening quotation mark befote the width attribute! Error 0x%08lx!", __FUNCTION__, Result);
+
+            goto Exit;
+        }
+
+        if (*Cursor == '\"')
+        {
+            Cursor++;
+
+            break;
+        }
+        else
+        {
+            Cursor++;
+        }
+
+        NumberOfBytesRead++;
+    }
+
+    NumberOfBytesRead = 0;
+
+    for (uint8_t Counter = 0; Counter < 6; Counter++)
+    {
+        if (*Cursor == '\"')
+        {
+            Cursor++;
+
+            break;
+        }
+        else
+        {
+            TempBuffer[Counter] = *Cursor;
+
+            Cursor++;
+        }
+    }
+
+    TileMap->Width = atoi(TempBuffer);
+
+    if (TileMap->Width == 0)
+    {
+        Result = ERROR_INVALID_DATA;
+
+        LogMessageA(Error, "[%s] Width attribute is 0! Error 0x%08lx!", __FUNCTION__, Result);
+
+        goto Exit;
+    }
+
+
+    memset(TempBuffer, 0, sizeof(TempBuffer));
+
+    if ((Cursor = strstr(Buffer, "height=")) == NULL)
+    {
+        Result = ERROR_INVALID_DATA;
+
+        LogMessageA(Error, "[%s] Could not locate the height attribute! Error 0x%08lx!", __FUNCTION__, Result);
+
+        goto Exit;
+    }
+
+    NumberOfBytesRead = 0;
+
+    for (;;)
+    {
+        if (NumberOfBytesRead > 8)
+        {
+            // We shoudl have found opening quotation mark
+
+            Result = ERROR_INVALID_DATA;
+
+            LogMessageA(Error, "[%s] Could not locate the opening quotation mark befote the height attribute! Error 0x%08lx!", __FUNCTION__, Result);
+
+            goto Exit;
+        }
+
+        if (*Cursor == '\"')
+        {
+            Cursor++;
+
+            break;
+        }
+        else
+        {
+            Cursor++;
+        }
+
+        NumberOfBytesRead++;
+    }
+
+    NumberOfBytesRead = 0;
+
+    for (uint8_t Counter = 0; Counter < 6; Counter++)
+    {
+        if (*Cursor == '\"')
+        {
+            Cursor++;
+
+            break;
+        }
+        else
+        {
+            TempBuffer[Counter] = *Cursor;
+
+            Cursor++;
+        }
+    }
+
+    TileMap->Height = atoi(TempBuffer);
+
+    if (TileMap->Height == 0)
+    {
+        Result = ERROR_INVALID_DATA;
+
+        LogMessageA(Error, "[%s] Height attribute is 0! Error 0x%08lx!", __FUNCTION__, Result);
+
+        goto Exit;
+    }
+
+    Rows = TileMap->Height;
+
+    Columns = TileMap->Width;
+
+    TileMap->Map = HeapAlloc(GetProcessHeap(), HEAP_ZERO_MEMORY, Rows * sizeof(void*));
+
+    if (TileMap->Map == NULL)
+    {
+        Result = ERROR_OUTOFMEMORY;
+
+        LogMessageA(Error, "[%s] HeapAlloc failed! 0x%08lx!", __FUNCTION__, Result);
+
+        goto Exit;
+    }
+
+    for (uint16_t Counter = 0; Counter < TileMap->Height; Counter++)
+    {
+        TileMap->Map[Counter] = HeapAlloc(GetProcessHeap(), HEAP_ZERO_MEMORY, Columns * sizeof(void*));
+
+        if (TileMap->Map[Counter] == NULL)
+        {
+            Result = ERROR_OUTOFMEMORY;
+
+            LogMessageA(Error, "[%s] HeapAlloc failed! 0x%08lx!", __FUNCTION__, Result);
+
+            goto Exit;
+        }
+    }
+
+    NumberOfBytesRead = 0;
+
+    memset(TempBuffer, 0, sizeof(TempBuffer));
+
+    if ((Cursor = strstr(Buffer, ",")) == NULL)
+    {
+        Result = ERROR_INVALID_DATA;
+
+        LogMessageA(Error, "[%s] Could not find a comma character! 0x%08lx!", __FUNCTION__, Result);
+
+        goto Exit;
+    }
+
+    while (*Cursor != '\r' && *Cursor != '\n')
+    {
+        if (NumberOfBytesRead > 4)
+        {
+            Result = ERROR_INVALID_DATA;
+
+            LogMessageA(Error, "[%s] Could not find a new line character at the beginning of the tile map data! 0x%08lx!", __FUNCTION__, Result);
+
+            goto Exit;
+        }
+
+        NumberOfBytesRead++;
+
+        Cursor--;
+    }
+
+    Cursor++;
+
+    for (uint16_t Row = 0; Row < Rows; Row++)
+    {
+        for (uint16_t Column = 0; Column < Columns; Column++)
+        {
+            memset(TempBuffer, 0, sizeof(TempBuffer));
+
+        Skip:
+
+            if (*Cursor == '\r' || *Cursor == '\n')
+            {
+                Cursor++;
+
+                goto Skip;
+            }
+
+            for (uint8_t Counter = 0; Counter < 8; Counter++)
+            {
+                if (*Cursor == ',' || *Cursor == '<')
+                {
+                    if (((TileMap->Map[Row][Column]) = (uint8_t)atoi(TempBuffer)) == 0)
+                    {
+                        Result = ERROR_INVALID_DATA;
+
+                        LogMessageA(Error, "[%s] atoi failed while converting tile map data! (The tilemap cannot contain any tiles with the value 0, because atoi cannot differentiate between 0 and failure.) 0x%08lx!", __FUNCTION__, Result);
+
+                        goto Exit;
+                    }
+
+                    Cursor++;
+
+                    break;
+                }
+
+                TempBuffer[Counter] = *Cursor;
+
+                Cursor++;
+            }
+        }
+    }
+
+
+Exit:
+    
+
+    return Result;
+}
+
+DWORD Load32BppBitmapFromMemoy(_In_ void* Buffer, _Inout_ GAMEBITMAP* GameBitmap)
+{
+    DWORD Error = ERROR_SUCCESS;
+
+    WORD BitmapHeader = 0;
+
+    DWORD PixelDataOffset = 0;
+
+    //DWORD NumberOfBytesRead = 2;
+
+    memcpy(&BitmapHeader, Buffer, 2);
+
+    if (BitmapHeader != 0x4d42) // "BM" backwards
+    {
+        Error = ERROR_INVALID_DATA;
+
+        goto Exit;
+    }
+
+    memcpy(&PixelDataOffset, (BYTE*)Buffer + 0xA, sizeof(DWORD));
+
+    memcpy(&GameBitmap->Bitmapinfo.bmiHeader, (BYTE*)Buffer + 0xE, sizeof(BITMAPINFOHEADER));
+
+    GameBitmap->Memory = (BYTE*)Buffer + PixelDataOffset;
+
+
+Exit:
+
+    if (Error == ERROR_SUCCESS)
+    {
+        LogMessageA(Informational, "[%s] Loading successful", __FUNCTION__);
+    }
+    else
+    {
+        LogMessageA(Error, "[%s] Loading failed! Error 0x%08lx!", __FUNCTION__, Error);
+    }
+
+    return Error;
 }
 
 void PlayGameSound(_In_ GAMESOUND* GameSound)
@@ -3093,19 +3360,19 @@ DWORD LoadAssetFromArchive(_In_ char* ArchiveName, _In_ char* AssetFileName, _In
         }
         case RESOURCETYPE_OGG:
         {
-
+            Result = LoadOggFromMemory(DecompressedBuffer, DecompressedSize, Resource);
 
             break;
         }
         case RESOURCETYPE_TILEMAP:
         {
-
+            Result = LoadTilemapFromMemory(DecompressedBuffer, DecompressedSize, Resource);
 
             break;
         }
         case RESOURCETYPE_BMPX:
         {
-
+            Result = Load32BppBitmapFromMemoy(DecompressedBuffer, Resource);
 
             break;
         }
@@ -3121,4 +3388,231 @@ Exit:
     mz_zip_reader_end(&Archive);
 
     return Result;
+}
+
+DWORD AssetLoadingThreadProc(_In_ LPVOID lpParam)
+{
+    DWORD Result = ERROR_SUCCESS;
+
+    if (LoadAssetFromArchive(ASSET_FILE, "6x7Font.bmpx", RESOURCETYPE_BMPX, &g6x7Font) != ERROR_SUCCESS)
+    {
+        LogMessageA(Error, "[%s] LoadAssetFromArchive failed!", __FUNCTION__);
+
+        MessageBoxA(NULL, "LoadAssetFromArchive failed!", "Error!", MB_ICONERROR | MB_OK);
+
+        goto Exit;
+    }
+
+    if (LoadAssetFromArchive(ASSET_FILE, "Splash.wav", RESOURCETYPE_WAV, &gSoundSplashScreen) != ERROR_SUCCESS)
+    {
+        MessageBoxA(NULL, "LoadWaveFromFile failed!", "Error!", MB_ICONERROR | MB_OK);
+
+        goto Exit;
+    }
+
+    if (LoadAssetFromArchive(ASSET_FILE, "Fading.wav", RESOURCETYPE_WAV, &gSoundFadingScreen) != ERROR_SUCCESS)
+    {
+        MessageBoxA(NULL, "LoadAssetFromArchive failed!", "Error!", MB_ICONERROR | MB_OK);
+
+        goto Exit;
+    }
+
+    SetEvent(gEssentialAssetsLoadedEvent);
+
+    if ((Result = LoadAssetFromArchive(ASSET_FILE, "Overworld01.bmpx", RESOURCETYPE_BMPX, &gOverWorld01.GameBitmap)) != ERROR_SUCCESS)
+    {
+        LogMessageA(Error, "[%s] Loading Overworld01.bmpx failed with error 0x%08lx!", __FUNCTION__, Result);
+
+        goto Exit;
+    }
+
+    if ((Result = LoadAssetFromArchive(ASSET_FILE, "Overworld01.tmx", RESOURCETYPE_TILEMAP, &gOverWorld01.TIleMap)) != ERROR_SUCCESS)
+    {
+        LogMessageA(Error, "[%s] Loading Overworld01.tmx failed with error 0x%08lx!", __FUNCTION__, Result);
+
+        goto Exit;
+    }
+
+    if ((Result = LoadAssetFromArchive(ASSET_FILE, "MenuSelect.wav", RESOURCETYPE_WAV, &gSoundMenuNavigate)) != ERROR_SUCCESS)
+    {
+        LogMessageA(Error, "[%s] Loading MenuSelect.wav failed with error 0x%08lx!", __FUNCTION__, Result);
+
+        goto Exit;
+    }
+
+    if ((Result = LoadAssetFromArchive(ASSET_FILE, "MenuChooser.wav", RESOURCETYPE_WAV, &gSoundMenuChoose)) != ERROR_SUCCESS)
+    {
+        LogMessageA(Error, "[%s] Loading MenuChooser.wav failed with error 0x%08lx!", __FUNCTION__, Result);
+
+        goto Exit;
+    }
+
+    if ((Result = LoadAssetFromArchive(ASSET_FILE, "Overworld01.ogg", RESOURCETYPE_OGG, &gMusicOverworld01)) != ERROR_SUCCESS)
+    {
+        LogMessageA(Error, "[%s] Loading Overworld01.ogg failed with error 0x%08lx!", __FUNCTION__, Result);
+
+        goto Exit;
+    }
+
+    if ((Result = LoadAssetFromArchive(ASSET_FILE, "Hero_Suit0_Down_Standing.bmpx", RESOURCETYPE_BMPX, &gPlayer.Sprite[SUIT_0][FACING_DOWN_0])) != ERROR_SUCCESS)
+    {
+        LogMessageA(Error, "[%s] Loading Hero_Suit0_Down_Standing.bmpx failed with error 0x%08lx!", __FUNCTION__, Result);
+
+        goto Exit;
+    }
+
+    if ((Result = LoadAssetFromArchive(ASSET_FILE, "Hero_Suit0_Down_Walk1.bmpx", RESOURCETYPE_BMPX, &gPlayer.Sprite[SUIT_0][FACING_DOWN_1])) != ERROR_SUCCESS)
+    {
+        LogMessageA(Error, "[%s] Loading Hero_Suit0_Down_Walk1.bmpx failed with error 0x%08lx!", __FUNCTION__, Result);
+
+        goto Exit;
+    }
+
+    if ((Result = LoadAssetFromArchive(ASSET_FILE, "Hero_Suit0_Down_Walk2.bmpx", RESOURCETYPE_BMPX, &gPlayer.Sprite[SUIT_0][FACING_DOWN_2])) != ERROR_SUCCESS)
+    {
+        LogMessageA(Error, "[%s] Loading Hero_Suit0_Down_Walk2.bmpx failed with error 0x%08lx!", __FUNCTION__, Result);
+
+        goto Exit;
+    }
+
+    if ((Result = LoadAssetFromArchive(ASSET_FILE, "Hero_Suit0_Left_Standing.bmpx", RESOURCETYPE_BMPX, &gPlayer.Sprite[SUIT_0][FACING_LEFT_0])) != ERROR_SUCCESS)
+    {
+        LogMessageA(Error, "[%s] Loading Hero_Suit0_Left_Standing.bmpx failed with error 0x%08lx!", __FUNCTION__, Result);
+
+        goto Exit;
+    }
+
+    if ((Result = LoadAssetFromArchive(ASSET_FILE, "Hero_Suit0_Left_Walk1.bmpx", RESOURCETYPE_BMPX, &gPlayer.Sprite[SUIT_0][FACING_LEFT_1])) != ERROR_SUCCESS)
+    {
+        LogMessageA(Error, "[%s] Loading Hero_Suit0_Left_Walk1.bmpx failed with error 0x%08lx!", __FUNCTION__, Result);
+
+        goto Exit;
+    }
+
+    if ((Result = LoadAssetFromArchive(ASSET_FILE, "Hero_Suit0_Left_Walk2.bmpx", RESOURCETYPE_BMPX, &gPlayer.Sprite[SUIT_0][FACING_LEFT_2])) != ERROR_SUCCESS)
+    {
+        LogMessageA(Error, "[%s] Loading Hero_Suit0_Left_Walk2.bmpx failed with error 0x%08lx!", __FUNCTION__, Result);
+
+        goto Exit;
+    }
+
+    if ((Result = LoadAssetFromArchive(ASSET_FILE, "Hero_Suit0_Right_Standing.bmpx", RESOURCETYPE_BMPX, &gPlayer.Sprite[SUIT_0][FACING_RIGHT_0])) != ERROR_SUCCESS)
+    {
+        LogMessageA(Error, "[%s] Loading Hero_Suit0_Right_Standing.bmpx failed with error 0x%08lx!", __FUNCTION__, Result);
+
+        goto Exit;
+    }
+
+    if ((Result = LoadAssetFromArchive(ASSET_FILE, "Hero_Suit0_Right_Walk1.bmpx", RESOURCETYPE_BMPX, &gPlayer.Sprite[SUIT_0][FACING_RIGHT_1])) != ERROR_SUCCESS)
+    {
+        LogMessageA(Error, "[%s] Loading Hero_Suit0_Right_Walk1.bmpx failed with error 0x%08lx!", __FUNCTION__, Result);
+
+        goto Exit;
+    }
+
+    if ((Result = LoadAssetFromArchive(ASSET_FILE, "Hero_Suit0_Right_Walk2.bmpx", RESOURCETYPE_BMPX, &gPlayer.Sprite[SUIT_0][FACING_RIGHT_2])) != ERROR_SUCCESS)
+    {
+        LogMessageA(Error, "[%s] Loading Hero_Suit0_Right_Walk2.bmpx failed with error 0x%08lx!", __FUNCTION__, Result);
+
+        goto Exit;
+    }
+
+    if ((Result = LoadAssetFromArchive(ASSET_FILE, "Hero_Suit0_Up_Standing.bmpx", RESOURCETYPE_BMPX, &gPlayer.Sprite[SUIT_0][FACING_UPWARD_0])) != ERROR_SUCCESS)
+    {
+        LogMessageA(Error, "[%s] Loading Hero_Suit0_Up_Standing.bmpx failed with error 0x%08lx!", __FUNCTION__, Result);
+
+        goto Exit;
+    }
+
+    if ((Result = LoadAssetFromArchive(ASSET_FILE, "Hero_Suit0_Up_Walk1.bmpx", RESOURCETYPE_BMPX, &gPlayer.Sprite[SUIT_0][FACING_UPWARD_1])) != ERROR_SUCCESS)
+    {
+        LogMessageA(Error, "[%s] Loading Hero_Suit0_Up_Walk1.bmpx failed with error 0x%08lx!", __FUNCTION__, Result);
+
+        goto Exit;
+    }
+
+    if ((Result = LoadAssetFromArchive(ASSET_FILE, "Hero_Suit0_Up_Walk2.bmpx", RESOURCETYPE_BMPX, &gPlayer.Sprite[SUIT_0][FACING_UPWARD_2])) != ERROR_SUCCESS)
+    {
+        LogMessageA(Error, "[%s] Loading Hero_Suit0_Up_Walk2.bmpx failed with error 0x%08lx!", __FUNCTION__, Result);
+
+        goto Exit;
+    }
+
+Exit:
+    return Result;
+}
+
+void InitializeGlobals(void)
+{
+    gGamepadID = -1;
+
+    gPassablieTiles[0] = TILE_GRASS_01;
+
+    gPassablieTiles[1] = TILE_BRIDGE_01;
+
+    gPassablieTiles[2] = TILE_TREE_01;
+
+    gPassablieTiles[3] = TILE_PORTAL_01;
+
+    gPassablieTiles[4] = TILE_BRICK_01;
+
+    gCurrentGameState = GAMESTATE_OPENINGSPLASHSCREEN;
+
+    gOverwrldArea.left = 0;
+
+    gOverwrldArea.top = 0;
+
+    gOverwrldArea.right = 3840;
+
+    gOverwrldArea.bottom = 2400;
+
+    gDungeon1Area.left = 3856;
+
+    gDungeon1Area.top = 0;
+
+    gDungeon1Area.right = 4240;
+
+    gDungeon1Area.bottom = 240;
+
+    gCurrentArea = gOverwrldArea;
+
+    gPortal001.WorldPos.x = 336;
+
+    gPortal001.WorldPos.y = 176;
+
+    gPortal001.WorldDest.x = 3952;
+
+    gPortal001.WorldDest.y = 80;
+
+    gPortal001.Area = gDungeon1Area; // the area where the portal takes you
+
+    gPortal001.CameraPos.x = 3856;
+
+    gPortal001.CameraPos.y = 0;
+
+    gPortal001.ScreenPos.x = 96;
+
+    gPortal001.ScreenPos.y = 80;
+
+    gPortal002.WorldPos.x = 3952;
+
+    gPortal002.WorldPos.y = 80;
+
+    gPortal002.WorldDest.x = 336;
+
+    gPortal002.WorldDest.y = 176;
+
+    gPortal002.Area = gOverwrldArea; // the area where the portal takes you
+
+    gPortal002.CameraPos.x = 16;
+
+    gPortal002.CameraPos.y = 0;
+
+    gPortal002.ScreenPos.x = 320;
+
+    gPortal002.ScreenPos.y = 176;
+
+    gPortals[0] = gPortal001;
+
+    gPortals[1] = gPortal002;
 }

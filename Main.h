@@ -254,6 +254,8 @@ typedef struct GAMEINPUT
 
 	int16_t ChooseKeyIsDown;
 
+	int16_t PortalIsDown;
+
 	int16_t EscapeKeyWasDown;
 
 	int16_t DebugKeyWasDown;
@@ -267,6 +269,8 @@ typedef struct GAMEINPUT
 	int16_t DownKeyWasDown;
 
 	int16_t ChooseKeyWasDown;
+
+	int16_t PortalWasDown;
 
 } GAMEINPUT;
 
@@ -303,6 +307,10 @@ typedef struct HERO
 	int32_t MP; // Magic Power
 
 	BOOL Active;
+
+	uint64_t StepsTaken;
+
+	BOOL HasPlayerMoveSincePortal;
 
 } HERO;
 
@@ -416,7 +424,14 @@ GAMEMAP gOverWorld01;
 
 UPOINT gCamera;
 
-uint8_t gPassablieTiles[3];
+HANDLE gAssetLoadingThreadHandle;
+
+uint8_t gPassablieTiles[5];
+
+// This event gets signalled after the most essential assets have been loaded 
+// "Essential" means the assets required to render the splash screen
+HANDLE gEssentialAssetsLoadedEvent;
+
 
 INT __stdcall WinMain(HINSTANCE Instance, HINSTANCE PreviousInstance, PSTR CommandLine, INT CommandShow);
 
@@ -432,9 +447,11 @@ void RednerFrameGraphics(void);
 
 DWORD Load32BppBitmapFromFile(_In_ char* FileName, _Inout_ GAMEBITMAP* GameBitmap);
 
+DWORD Load32BppBitmapFromMemoy(_In_ void* Buffer, _Inout_ GAMEBITMAP* GameBitmap);
+
 DWORD InitializeHero(void);
 
-void Blit32BppBitmapToBuffer(_In_ GAMEBITMAP* GameBitmap, _In_ uint16_t x, _In_ uint16_t y);
+void Blit32BppBitmapToBuffer(_In_ GAMEBITMAP* GameBitmap, _In_ int16_t x, _In_ int16_t y);
 
 void BlitStringToBuffer(_In_ char* String, _In_ GAMEBITMAP* FontSheet, _In_ PIXEL32 Color, _In_ uint16_t x, _In_ uint16_t y);
 
@@ -462,11 +479,17 @@ void PlayGameMusic(_In_ GAMESOUND* GameSound);
 
 DWORD LoadTilemapFromFile(_In_ char* FileName, _Inout_ TILEMAP* TileMap);
 
+DWORD LoadTilemapFromMemory(_In_ void* Buffer, uint32_t BufferSize, _Inout_ TILEMAP* TileMap);
+
 DWORD LoadOggFromFile(_In_ char* FileName, _Inout_ GAMESOUND* GameSound);
+
+DWORD LoadOggFromMemory(_In_ void* Buffer, _In_ uint32_t BufferSize, _Inout_ GAMESOUND* GameSound);
 
 DWORD LoadAssetFromArchive(_In_ char* ArchiveName, _In_ char* AssetFileName, _In_ RESOURCETYPE ResourceType, _Inout_ void* Resource);
 
+DWORD AssetLoadingThreadProc(_In_ LPVOID lpParam);
 
+void InitializeGlobals(void);
 
 #ifdef SIMD
 void ClearScreen(_In_ __m128i* Color);
