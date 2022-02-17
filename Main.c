@@ -69,6 +69,18 @@ INT WINAPI WinMain(_In_ HINSTANCE Instance, _In_ HINSTANCE PreviousInstance,
     }
 
     LogMessageA(Informational, "[%s] gPlayer.WorldPos.x is %d", __FUNCTION__, gPlayer.WorldPos.x);
+
+    LogMessageA(Informational, "[%s] gPlayer.WorldPos.y is %d", __FUNCTION__, gPlayer.WorldPos.y);
+
+    LogMessageA(Informational, "[%s] gPlayer.ScreenPos.x is %d", __FUNCTION__, gPlayer.ScreenPos.x);
+
+    LogMessageA(Informational, "[%s] gPlayer.ScreenPos.x is %d", __FUNCTION__, gPlayer.ScreenPos.y);
+
+    LogMessageA(Informational, "[%s] gCamera.x is %d", __FUNCTION__,gCamera.x);
+
+    LogMessageA(Informational, "[%s] gCamera.x is %d", __FUNCTION__, gCamera.y);
+
+
     
     LogMessageA(Informational, "[%s], Informational", __FUNCTION__);
     
@@ -698,7 +710,7 @@ DWORD InitializeHero(void)
 
     gCamera.y = 0;*/
 
-    gPlayer.WorldPos.x = 3856;
+    //gPlayer.WorldPos.x = 4032;
 
 
 Exit:
@@ -1882,7 +1894,7 @@ DWORD LoadRegistryParameters(void)
 
     gSFXVolume = (float)gRegistryParams.SFXVolume / 100.f;
 
-    Result = RegGetValueA(RegKey, NULL, "gPlayer.WorldPos.x", RRF_RT_DWORD, NULL, (BYTE*)&gPlayer.WorldPos.x, &RegBytesRead);
+    Result = RegGetValueA(RegKey, NULL, "gPlayer.WorldPos.x", RRF_RT_DWORD, NULL, (BYTE*)&gRegistryParams.WorldX, &RegBytesRead);
 
     if (Result != ERROR_SUCCESS)
     {
@@ -1892,7 +1904,7 @@ DWORD LoadRegistryParameters(void)
 
             LogMessageA(Informational, "[%s] Registry value 'gPlayer.WorldPos.x' not found. Using default of 64", __FUNCTION__);
 
-            gPlayer.WorldPos.x = 64;
+            gRegistryParams.WorldX = 64;
         }
         else
         {
@@ -1902,31 +1914,20 @@ DWORD LoadRegistryParameters(void)
         }
     }
 
+    gPlayer.WorldPos.x = gRegistryParams.WorldX;
+
     LogMessageA(Informational, "[%s] gPlayer.WorldPos.x is %d", __FUNCTION__, gPlayer.WorldPos.x);
 
-    Result = RegGetValueA(RegKey, NULL, "gPlayer.WorldPos.y", RRF_RT_DWORD, NULL, (BYTE*)&gPlayer.WorldPos.y, &RegBytesRead);
-
-    if (Result != ERROR_SUCCESS)
+    if (gPlayer.WorldPos.x > gOverwrldArea.left && gPlayer.WorldPos.x < gOverwrldArea.right)
     {
-        if (Result == ERROR_FILE_NOT_FOUND)
-        {
-            Result = ERROR_SUCCESS;
-
-            LogMessageA(Informational, "[%s] Registry value 'gPlayer.WorldPos.y' not found. Using default of 80", __FUNCTION__);
-
-            gPlayer.WorldPos.y = 80;
-        }
-        else
-        {
-            LogMessageA(Error, "[%s] Failed to read the 'gPlayer.WorldPos.y' registry value! Error 0x%08lx!", __FUNCTION__, Result);
-
-            goto Exit;
-        }
+        gCurrentArea = gOverwrldArea;
+    }
+    else if (gPlayer.WorldPos.x > gDungeon1Area.left && gPlayer.WorldPos.x < gDungeon1Area.right)
+    {
+        gCurrentArea = gDungeon1Area;
     }
 
-    LogMessageA(Informational, "[%s] gPlayer.WorldPos.y is %d", __FUNCTION__, gPlayer.WorldPos.y);
-
-    Result = RegGetValueA(RegKey, NULL, "gPlayer.ScreenPos.x", RRF_RT_DWORD, NULL, (BYTE*)&gPlayer.ScreenPos.x, &RegBytesRead);
+    Result = RegGetValueA(RegKey, NULL, "gPlayer.ScreenPos.y", RRF_RT_DWORD, NULL, (BYTE*)&gRegistryParams.ScreenY, &RegBytesRead);
 
     if (Result != ERROR_SUCCESS)
     {
@@ -1934,31 +1935,9 @@ DWORD LoadRegistryParameters(void)
         {
             Result = ERROR_SUCCESS;
 
-            LogMessageA(Informational, "[%s] Registry value 'gPlayer.ScreenPos.x' not found. Using default of 64", __FUNCTION__);
+            LogMessageA(Informational, "[%s] Registry value 'gPlayer.ScreenPos.y' not found. Using default of 80", __FUNCTION__);
 
-            gPlayer.ScreenPos.x = 64;
-        }
-        else
-        {
-            LogMessageA(Error, "[%s] Failed to read the 'gPlayer.ScreenPos.x' registry value! Error 0x%08lx!", __FUNCTION__, Result);
-
-            goto Exit;
-        }
-    }
-
-    LogMessageA(Informational, "[%s] gPlayer.ScreenPos.x is %d", __FUNCTION__, gPlayer.ScreenPos.x);
-
-    Result = RegGetValueA(RegKey, NULL, "gPlayer.ScreenPos.y", RRF_RT_DWORD, NULL, (BYTE*)&gPlayer.ScreenPos.y, &RegBytesRead);
-
-    if (Result != ERROR_SUCCESS)
-    {
-        if (Result == ERROR_FILE_NOT_FOUND)
-        {
-            Result = ERROR_SUCCESS;
-
-            LogMessageA(Informational, "[%s] Registry value 'gPlayer.ScreenPos.x' not found. Using default of 80", __FUNCTION__);
-
-            gPlayer.ScreenPos.y = 80;
+            gRegistryParams.ScreenY = 80;
         }
         else
         {
@@ -1968,9 +1947,58 @@ DWORD LoadRegistryParameters(void)
         }
     }
 
+    gPlayer.ScreenPos.y = gRegistryParams.ScreenY;
+
     LogMessageA(Informational, "[%s] gPlayer.ScreenPos.y is %d", __FUNCTION__, gPlayer.ScreenPos.y);
 
-    Result = RegGetValueA(RegKey, NULL, "gCamera.x", RRF_RT_DWORD, NULL, (BYTE*)&gCamera.x, &RegBytesRead);
+    Result = RegGetValueA(RegKey, NULL, "gPlayer.WorldPos.y", RRF_RT_DWORD, NULL, (BYTE*)&gRegistryParams.WorldY, &RegBytesRead);
+
+    if (Result != ERROR_SUCCESS)
+    {
+        if (Result == ERROR_FILE_NOT_FOUND)
+        {
+            Result = ERROR_SUCCESS;
+
+            LogMessageA(Informational, "[%s] Registry value 'gPlayer.WorldPos.y' not found. Using default of 80", __FUNCTION__);
+
+            gRegistryParams.WorldY = 80;
+        }
+        else
+        {
+            LogMessageA(Error, "[%s] Failed to read the 'gPlayer.WorldPos.y' registry value! Error 0x%08lx!", __FUNCTION__, Result);
+
+            goto Exit;
+        }
+    }
+    gPlayer.WorldPos.y = gRegistryParams.WorldY;
+
+    LogMessageA(Informational, "[%s] gPlayer.WorldPos.y is %d", __FUNCTION__, gPlayer.WorldPos.y);
+
+    Result = RegGetValueA(RegKey, NULL, "gPlayer.ScreenPos.x", RRF_RT_DWORD, NULL, (BYTE*)&gRegistryParams.ScreenX, &RegBytesRead);
+
+    if (Result != ERROR_SUCCESS)
+    {
+        if (Result == ERROR_FILE_NOT_FOUND)
+        {
+            Result = ERROR_SUCCESS;
+
+            LogMessageA(Informational, "[%s] Registry value 'gPlayer.ScreenPos.x' not found. Using default of 64", __FUNCTION__);
+
+            gRegistryParams.ScreenX = 64;
+        }
+        else
+        {
+            LogMessageA(Error, "[%s] Failed to read the 'gPlayer.ScreenPos.x' registry value! Error 0x%08lx!", __FUNCTION__, Result);
+
+            goto Exit;
+        }
+    }
+
+    gPlayer.ScreenPos.x = gRegistryParams.ScreenX;
+
+    LogMessageA(Informational, "[%s] gPlayer.ScreenPos.x is %d", __FUNCTION__, gPlayer.ScreenPos.x);
+
+    Result = RegGetValueA(RegKey, NULL, "gCamera.x", RRF_RT_DWORD, NULL, (BYTE*)&gRegistryParams.CameraX, &RegBytesRead);
 
     if (Result != ERROR_SUCCESS)
     {
@@ -1980,7 +2008,7 @@ DWORD LoadRegistryParameters(void)
 
             LogMessageA(Informational, "[%s] Registry value 'gCamera.x' not found. Using default of 0", __FUNCTION__);
 
-            gCamera.x = 0;
+            gRegistryParams.CameraX = 0;
         }
         else
         {
@@ -1990,9 +2018,11 @@ DWORD LoadRegistryParameters(void)
         }
     }
 
+    gCamera.x = gRegistryParams.CameraX;
+
     LogMessageA(Informational, "[%s] gCamera.x is %d", __FUNCTION__, gCamera.x);
 
-    Result = RegGetValueA(RegKey, NULL, "gCamera.y", RRF_RT_DWORD, NULL, (BYTE*)&gCamera.y, &RegBytesRead);
+    Result = RegGetValueA(RegKey, NULL, "gCamera.y", RRF_RT_DWORD, NULL, (BYTE*)&gRegistryParams.CameraY, &RegBytesRead);
 
     if (Result != ERROR_SUCCESS)
     {
@@ -2002,7 +2032,7 @@ DWORD LoadRegistryParameters(void)
 
             LogMessageA(Informational, "[%s] Registry value 'gCamera.y' not found. Using default of 0", __FUNCTION__);
 
-            gCamera.y = 0;
+            gRegistryParams.CameraY = 0;
         }
         else
         {
@@ -2012,9 +2042,11 @@ DWORD LoadRegistryParameters(void)
         }
     }
 
+    gCamera.y = gRegistryParams.CameraY;
+
     LogMessageA(Informational, "[%s] gCamera.y is %d", __FUNCTION__, gCamera.y);
 
-    Result = RegGetValueA(RegKey, NULL, "gPlayer.Direction", RRF_RT_DWORD, NULL, (BYTE*)&gPlayer.Direction, &RegBytesRead);
+    Result = RegGetValueA(RegKey, NULL, "gPlayer.Direction", RRF_RT_DWORD, NULL, (BYTE*)&gRegistryParams.Direction, &RegBytesRead);
 
     if (Result != ERROR_SUCCESS)
     {
@@ -2024,7 +2056,7 @@ DWORD LoadRegistryParameters(void)
 
             LogMessageA(Informational, "[%s] Registry value 'gPlayer.Direction' not found. Using default of DIRECTION_DOWN", __FUNCTION__);
 
-            gPlayer.Direction = DIRECTION_DOWN;
+            gRegistryParams.Direction = DIRECTION_DOWN;
         }
         else
         {
@@ -2034,9 +2066,11 @@ DWORD LoadRegistryParameters(void)
         }
     }
 
+    gPlayer.Direction = gRegistryParams.Direction;
+
     LogMessageA(Informational, "[%s] gPlayer.Direction is %d", __FUNCTION__, gPlayer.Direction);
 
-    Result = RegGetValueA(RegKey, NULL, "gPlayer.CurrentArmor", RRF_RT_DWORD, NULL, (BYTE*)&gPlayer.CurrentArmor, &RegBytesRead);
+    Result = RegGetValueA(RegKey, NULL, "gPlayer.CurrentArmor", RRF_RT_DWORD, NULL, (BYTE*)&gRegistryParams.CurrentArmor, &RegBytesRead);
 
     if (Result != ERROR_SUCCESS)
     {
@@ -2046,7 +2080,7 @@ DWORD LoadRegistryParameters(void)
 
             LogMessageA(Informational, "[%s] Registry value 'gPlayer.CurrentArmor' not found. Using default of SUIT_0", __FUNCTION__);
 
-            gPlayer.CurrentArmor = SUIT_0;
+            gRegistryParams.CurrentArmor = SUIT_0;
         }
         else
         {
@@ -2056,9 +2090,11 @@ DWORD LoadRegistryParameters(void)
         }
     }
 
+    gPlayer.CurrentArmor = gRegistryParams.CurrentArmor;
+
     LogMessageA(Informational, "[%s] gPlayer.CurrentArmor is %d", __FUNCTION__, gPlayer.CurrentArmor);
 
-    Result = RegGetValueA(RegKey, NULL, "gPlayer.MovementRemaining", RRF_RT_DWORD, NULL, (BYTE*)&gPlayer.MovementRemaining, &RegBytesRead);
+    Result = RegGetValueA(RegKey, NULL, "gPlayer.MovementRemaining", RRF_RT_DWORD, NULL, (BYTE*)&gRegistryParams.MovementsRemaining, &RegBytesRead);
 
     if (Result != ERROR_SUCCESS)
     {
@@ -2068,7 +2104,7 @@ DWORD LoadRegistryParameters(void)
 
             LogMessageA(Informational, "[%s] Registry value 'gPlayer.MovementRemaining' not found. Using default of 0", __FUNCTION__);
 
-            gPlayer.MovementRemaining = 0;
+            gRegistryParams.MovementsRemaining = 0;
         }
         else
         {
@@ -2077,6 +2113,8 @@ DWORD LoadRegistryParameters(void)
             goto Exit;
         }
     }
+
+    gPlayer.MovementRemaining = gRegistryParams.MovementsRemaining;
 
     LogMessageA(Informational, "[%s] gPlayer.MovementRemaining is %d", __FUNCTION__, gPlayer.MovementRemaining);
 
@@ -4007,7 +4045,7 @@ void InitializeGlobals(void)
 
     gDungeon1Area.bottom = 240;
 
-    gCurrentArea = gOverwrldArea;
+    //gCurrentArea = gOverwrldArea;
 
     gPortal001.WorldPos.x = 336;
 

@@ -142,7 +142,7 @@ typedef enum GAMESATE
 
 	GAMESTATE_EXITYESNOSCREEN,
 
-	GAMESTATE_GAMEPADUNPLUGGED
+	GAMESTATE_GAMEPADUNPLUGGED,
 
 } GAMESTATE;
 
@@ -321,6 +321,24 @@ typedef struct REGISTRYPARAMS
 	DWORD MusicVolume;
 
 	DWORD ScaleFactor;
+
+	DWORD WorldX;
+
+	DWORD WorldY;
+
+	DWORD ScreenX;
+
+	DWORD ScreenY;
+
+	DWORD CameraX;
+
+	DWORD CameraY;
+
+	DWORD CurrentArmor;
+
+	DWORD MovementsRemaining;
+
+	DWORD Direction;
 
 } REGISTRYPARAMS;
 

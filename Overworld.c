@@ -160,7 +160,7 @@ void DrawOverworld(void)
             BlitStringToBuffer(Buffer, &g6x7Font, (PIXEL32) { 0xff, 0xff, 0xff, 0xff }, (gPlayer.ScreenPos.x + 16) + 5, gPlayer.ScreenPos.y + 4);
         }
 
-        if (gPlayer.WorldPos.x >= gCurrentArea.left)
+        if (gPlayer.WorldPos.x >= gCurrentArea.left + 16)
         {
             _itoa_s(gOverWorld01.TIleMap.Map[(gPlayer.WorldPos.y) / 16][(gPlayer.WorldPos.x - 16) / 16], Buffer, sizeof(Buffer), 10);
 
