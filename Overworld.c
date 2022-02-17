@@ -10,9 +10,17 @@ void DrawOverworld(void)
 
     static PIXEL32 TextColor;
 
+    static int16_t BrightnessAdjustment = - 255;
+
     if (gPerformanceData.TotalFramesRednered > (LastFrameSeen + 1))
     {
         LocalFrameCounter = 0;
+
+        memset(&TextColor, 0, sizeof(PIXEL32));
+
+        BrightnessAdjustment = -255;
+
+        gInputEnabled = FALSE;
     }
 
     if (LocalFrameCounter == 60)
@@ -20,9 +28,122 @@ void DrawOverworld(void)
         PlayGameMusic(&gMusicOverworld01);
     }
 
-    BlitTileMapToBuffer(&gOverWorld01.GameBitmap);
+    if (LocalFrameCounter >= 0)
+    {
+        if (LocalFrameCounter % 10 == 0 && LocalFrameCounter < 60)
+        {
+            BrightnessAdjustment += 40;
+        }
 
-    Blit32BppBitmapToBuffer(&gPlayer.Sprite[gPlayer.CurrentArmor][gPlayer.SpriteIndex + gPlayer.Direction], gPlayer.ScreenPos.x, gPlayer.ScreenPos.y);
+        if (LocalFrameCounter == 50)
+        {
+            BrightnessAdjustment = 0;
+
+            gInputEnabled = TRUE;
+        }
+    }
+
+    if (PortalIsUsed)
+    {
+        static int16_t XPixel;
+
+        int32_t StartingScreenPixelLeft = ((GAME_RES_WIDTH * GAME_RES_HEIGHT) - GAME_RES_WIDTH);
+
+        int32_t StartingScreenPixelRight = GAME_RES_WIDTH * GAME_RES_HEIGHT - 1;
+
+        int32_t MemoryOffsetRigtht = 0;
+
+        int32_t MemoryOffsetLeft = 0;
+
+        PIXEL32 Pixel = { 0x00, 0x00, 0x00, 0xff };
+
+        for (int8_t i = 0; i < 3; i++)
+        {
+            if (i != 0)
+            {
+                XPixel++;
+            }
+            for (int16_t YPixel = 0; YPixel < GAME_RES_HEIGHT; YPixel++)
+            {
+                MemoryOffsetRigtht = StartingScreenPixelRight - XPixel - YPixel * GAME_RES_WIDTH;
+
+                MemoryOffsetLeft = StartingScreenPixelLeft + XPixel - YPixel * GAME_RES_WIDTH;
+
+                memcpy_s((PIXEL32*)gBackBuffer.Memory + MemoryOffsetRigtht, sizeof(PIXEL32), &Pixel, sizeof(PIXEL32));
+
+                memcpy_s((PIXEL32*)gBackBuffer.Memory + MemoryOffsetLeft, sizeof(PIXEL32), &Pixel, sizeof(PIXEL32));
+            }
+        }        
+
+        if (XPixel <= GAME_RES_WIDTH / 2)
+        {
+            XPixel++;
+        }
+        else
+        {
+            PortalIsUsed = FALSE;
+
+            XPixel = 0;
+        }
+
+    }
+    else if (!PortalIsUsed && AnimationAfterPortal)
+    {
+        static int16_t XPixel = GAME_RES_WIDTH / 2;
+
+        int32_t StartingScreenPixelLeft = ((GAME_RES_WIDTH * GAME_RES_HEIGHT) - GAME_RES_WIDTH);
+
+        int32_t StartingScreenPixelRight = GAME_RES_WIDTH * GAME_RES_HEIGHT - 1;
+
+        int32_t MemoryOffsetRigtht = 0;
+
+        int32_t MemoryOffsetLeft = 0;
+
+        PIXEL32 Pixel = { 0x00, 0x00, 0x00, 0xff };
+
+        BlitTileMapToBuffer(&gOverWorld01.GameBitmap, BrightnessAdjustment);
+
+        Blit32BppBitmapToBuffer(&gPlayer.Sprite[gPlayer.CurrentArmor][gPlayer.SpriteIndex + gPlayer.Direction], gPlayer.ScreenPos.x, gPlayer.ScreenPos.y, BrightnessAdjustment);
+
+        for (int8_t i = 0; i < 3; i++)
+        {
+            if (i != 0)
+            {
+                XPixel--;
+            }
+
+            for (int16_t YPixel = 0; YPixel < GAME_RES_HEIGHT; YPixel++)
+            {
+                for (int16_t PixelX = 0; PixelX < XPixel; PixelX++)
+                {
+                    MemoryOffsetRigtht = StartingScreenPixelRight - PixelX - YPixel * GAME_RES_WIDTH;
+
+                    MemoryOffsetLeft = StartingScreenPixelLeft + PixelX - YPixel * GAME_RES_WIDTH;
+
+                    memcpy_s((PIXEL32*)gBackBuffer.Memory + MemoryOffsetRigtht, sizeof(PIXEL32), &Pixel, sizeof(PIXEL32));
+
+                    memcpy_s((PIXEL32*)gBackBuffer.Memory + MemoryOffsetLeft, sizeof(PIXEL32), &Pixel, sizeof(PIXEL32));
+                }
+            }
+        }
+
+       if (XPixel > 0)
+        {
+            XPixel--;
+        }
+        else
+        {
+            AnimationAfterPortal = FALSE;
+            
+            XPixel = GAME_RES_WIDTH / 2;
+        }
+    }
+    else
+    {
+        BlitTileMapToBuffer(&gOverWorld01.GameBitmap, BrightnessAdjustment);
+
+        Blit32BppBitmapToBuffer(&gPlayer.Sprite[gPlayer.CurrentArmor][gPlayer.SpriteIndex + gPlayer.Direction], gPlayer.ScreenPos.x, gPlayer.ScreenPos.y, BrightnessAdjustment);
+    }
 
     if (gPerformanceData.DisplayDegubInfo)
     {
@@ -69,9 +190,22 @@ void DrawOverworld(void)
 void PPI_Overworld(void)
 {
 
+    if (PortalIsUsed || AnimationAfterPortal)
+    {
+        return;
+    }
+
     if (gGameInput.EscapeKeyIsDown)
     {
-        SendMessageA(gGameWindow, WM_CLOSE, 0, 0);
+        //SendMessageA(gGameWindow, WM_CLOSE, 0, 0);
+        gCurrentGameState = GAMESTATE_TITLESCREEN;
+
+        gPreviousGameState = GAMESTATE_OVERWORLD;
+
+        if (SaveRegistryParametars() != ERROR_SUCCESS)
+        {
+            LogMessageA(Error, "[%s] SaveRegistryParameters failed!", __FUNCTION__);
+        }
     }
 
     if (!gPlayer.MovementRemaining)
@@ -293,7 +427,7 @@ void PPI_Overworld(void)
         }
         case 4:
         {
-            gPlayer.SpriteIndex = 2;
+            gPlayer.SpriteIndex = 2;           
 
             break;
         }
@@ -302,11 +436,12 @@ void PPI_Overworld(void)
         {
             gPlayer.SpriteIndex = 0;
 
-            // Is the player standing on a portal
             if (gOverWorld01.TIleMap.Map[gPlayer.WorldPos.y / 16][gPlayer.WorldPos.x / 16] == TILE_PORTAL_01)
             {
                 if (gPlayer.HasPlayerMoveSincePortal)
                 {
+                    PortalIsUsed = TRUE;
+
                     PortalHandler();
                 }
             }
@@ -328,6 +463,8 @@ void PortalHandler(void)
     gPlayer.HasPlayerMoveSincePortal = FALSE;
 
     BOOL PortalFound = FALSE;
+
+    AnimationAfterPortal = TRUE;
 
     for (uint16_t Counter = 0; Counter < _countof(gPortals); Counter++)
     {

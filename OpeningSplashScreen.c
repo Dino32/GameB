@@ -38,6 +38,8 @@ void DrawOpeningSplashScreen(void)
     static uint64_t Blink;
 
 
+    gInputEnabled = TRUE;
+
     if (WaitForSingleObject(gEssentialAssetsLoadedEvent, 0) != WAIT_OBJECT_0)
     {
         return;

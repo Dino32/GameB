@@ -66,7 +66,7 @@
 
 #define TARGET_MICROSECONDS_PER_FRAME 16667ULL
 
-#define SIMD
+//#define SIMD
 
 #define SUIT_0 0
 
@@ -207,8 +207,6 @@ typedef struct GAMEPERFDATA
 	int64_t Perffrequency;
 	
 	MONITORINFO MonitorInfo;
-
-
 
 	BOOL DisplayDegubInfo;
 
@@ -396,6 +394,8 @@ GAMESOUND gSoundMenuChoose;
 
 GAMESOUND gMusicOverworld01;
 
+GAMESOUND gMusicNoSound;
+
 float gSFXVolume;
 
 float gMusicVolume;
@@ -405,6 +405,8 @@ BOOL gGameIsRunning; // gloabal variable, its automatically initialized to zero 
 HWND gGameWindow; // Wheteher the player has started or loaded a game
 
 BOOL gWindowHasFocus;
+
+BOOL gInputEnabled;
 
 IXAudio2* gXAudio;
 
@@ -451,11 +453,11 @@ DWORD Load32BppBitmapFromMemoy(_In_ void* Buffer, _Inout_ GAMEBITMAP* GameBitmap
 
 DWORD InitializeHero(void);
 
-void Blit32BppBitmapToBuffer(_In_ GAMEBITMAP* GameBitmap, _In_ int16_t x, _In_ int16_t y);
+void Blit32BppBitmapToBuffer(_In_ GAMEBITMAP* GameBitmap, _In_ int16_t x, _In_ int16_t y, _In_ int16_t BrightnessAdjustment);
 
 void BlitStringToBuffer(_In_ char* String, _In_ GAMEBITMAP* FontSheet, _In_ PIXEL32 Color, _In_ uint16_t x, _In_ uint16_t y);
 
-void BlitTileMapToBuffer(_In_ GAMEBITMAP* GameBitmap);
+void BlitTileMapToBuffer(_In_ GAMEBITMAP* GameBitmap, _In_ int16_t BrightnessAdjustment);
 
 DWORD LoadRegistryParameters(void);
 

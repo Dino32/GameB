@@ -31,6 +31,10 @@ RECT gOverwrldArea;
 
 RECT gDungeon1Area;
 
+BOOL PortalIsUsed;
+
+BOOL AnimationAfterPortal;
+
 void DrawOverworld(void);
 
 void PPI_Overworld(void);

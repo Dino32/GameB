@@ -30,6 +30,8 @@ void DrawExitYesNoExitScreen()
         TextColor.Blue = 0x00;
 
         TextColor.Green = 0x00;
+
+        gInputEnabled =  FALSE;
     }
 
     memset(gBackBuffer.Memory, 0, GAME_DRAWING_AREA_MEMORY_SIZE);
@@ -52,6 +54,8 @@ void DrawExitYesNoExitScreen()
             TextColor.Blue = 255;
 
             TextColor.Green = 255;
+            
+            gInputEnabled = TRUE;
         }
     }
 

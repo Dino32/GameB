@@ -130,6 +130,8 @@ void DrawCharacterNaming(void)
 
     static PIXEL32 TextColor = { 0x00, 0x00, 0x00, 0x00 };
 
+    static int16_t BrightnessAdjustment = -255;
+
     if (gPerformanceData.TotalFramesRednered > (LastFrameSeen + 1))
     {
         LocalFrameCounter = 0;
@@ -140,8 +142,11 @@ void DrawCharacterNaming(void)
 
         TextColor.Green = 0x00;
 
+        BrightnessAdjustment = -255;
+
         gMenu_CharacterNaming.SelectedItem = 0;
 
+        gInputEnabled = FALSE;
     }
 
     memset(gBackBuffer.Memory, 0, GAME_DRAWING_AREA_MEMORY_SIZE);
@@ -155,6 +160,8 @@ void DrawCharacterNaming(void)
             TextColor.Blue += 32;
 
             TextColor.Green += 32;
+
+            BrightnessAdjustment += 40;
         }
 
         if (LocalFrameCounter == 70)
@@ -164,14 +171,18 @@ void DrawCharacterNaming(void)
             TextColor.Blue = 255;
 
             TextColor.Green = 255;
+
+            BrightnessAdjustment = 0;
+        
+            gInputEnabled = TRUE;
         }
     }
 
     BlitStringToBuffer(gMenu_CharacterNaming.Name, &g6x7Font, TextColor, (GAME_RES_WIDTH / 2) - (strlen(gMenu_CharacterNaming.Name) * 6) / 2, 30);
 
-    if (LocalFrameCounter >= 50)
+    if (LocalFrameCounter >= 20)
     {
-        Blit32BppBitmapToBuffer(&gPlayer.Sprite[SUIT_0][FACING_DOWN_0], 152, 62);
+        Blit32BppBitmapToBuffer(&gPlayer.Sprite[SUIT_0][FACING_DOWN_0], 152, 62, BrightnessAdjustment);
     }
 
     for (uint8_t Counter = 0; Counter < 8; Counter++)
@@ -327,5 +338,7 @@ void MenuItem_CharacterNaming_OK(void)
         gPlayer.Active = TRUE;
 
         PlayGameSound(&gSoundMenuChoose);
+
+        LogMessageA(Informational, "[%s] gPlayer.WorldPos.x is %d", __FUNCTION__, gPlayer.WorldPos.x);
     }
 }

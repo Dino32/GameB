@@ -25,6 +25,11 @@ void DrawTitleScreen(void)
 
     static PIXEL32 TextColor = { 0x00, 0x00, 0x00, 0x00 };
 
+    if (gPreviousGameState == GAMESTATE_OVERWORLD)
+    {
+        PlayGameMusic(&gMusicNoSound);
+    }
+
     if (gPerformanceData.TotalFramesRednered > (LastFrameSeen + 1))
     {
         LocalFrameCounter = 0;
@@ -38,11 +43,15 @@ void DrawTitleScreen(void)
         if (gPlayer.Active)
         {
             gMenu_TitleScreen.SelectedItem = 0;
+
+            gMI_ResumeGame.Enabled = TRUE;
         }
         else
         {
             gMenu_TitleScreen.SelectedItem = 1;
         }
+
+        gInputEnabled = FALSE;
     }
 
     memset(gBackBuffer.Memory, 0, GAME_DRAWING_AREA_MEMORY_SIZE);
@@ -65,6 +74,8 @@ void DrawTitleScreen(void)
             TextColor.Blue = 255;
 
             TextColor.Green = 255;
+
+            gInputEnabled = TRUE;
         }
     }
 
@@ -144,6 +155,8 @@ void MenuItem_TitleScree_StartNew(void)
     gPreviousGameState = gCurrentGameState;
 
     gCurrentGameState = GAMESTATE_CHARACTERNAMING;
+
+    LogMessageA(Informational, "[%s] gPlayer.WorldPos.x is %d", __FUNCTION__, gPlayer.WorldPos.x);
 }
 
 void MenuItem_TitleScree_Options(void)

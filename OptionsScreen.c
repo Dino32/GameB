@@ -41,6 +41,8 @@ void DrawOptionsScreen(void)
         TextColor.Green = 0x00;
 
         gMenu_OptionsScreen.SelectedItem = 0;
+
+        gInputEnabled = FALSE;
     }
 
     memset(gBackBuffer.Memory, 0, GAME_DRAWING_AREA_MEMORY_SIZE);
@@ -63,6 +65,8 @@ void DrawOptionsScreen(void)
             TextColor.Blue = 255;
 
             TextColor.Green = 255;
+
+            gInputEnabled = TRUE;
         }
     }
 

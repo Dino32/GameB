@@ -1,3 +1,10 @@
+// Dino Babic
+// TODO:
+// Add Resume game in title screen
+// Save all the progress made in game (gold, woods, kills, things like that)
+// When player is in the overworld and presses escape it shoudl take hime to the title screen
+// Draw message dialogs that will lead user on what to do
+
 #include "Main.h" 
 
 #include "miniz.h"
@@ -47,7 +54,6 @@ INT WINAPI WinMain(_In_ HINSTANCE Instance, _In_ HINSTANCE PreviousInstance,
 
     InitializeGlobals();
 
-
     //This critical section is used to synchronize access to the log file vis a vis
     // LogMessageA when used by mutiple threads simultaneously
     InitializeCriticalSectionAndSpinCount(&gLogCritSec, 0x400);
@@ -61,6 +67,8 @@ INT WINAPI WinMain(_In_ HINSTANCE Instance, _In_ HINSTANCE PreviousInstance,
     {
         goto Exit;
     }
+
+    LogMessageA(Informational, "[%s] gPlayer.WorldPos.x is %d", __FUNCTION__, gPlayer.WorldPos.x);
     
     LogMessageA(Informational, "[%s], Informational", __FUNCTION__);
     
@@ -436,7 +444,7 @@ BOOL GameIsAlreadyRunning(void) {
 
 void ProcessPlayerInput(void)
 {
-    if (gWindowHasFocus == FALSE)
+    if (gInputEnabled == FALSE || gWindowHasFocus == FALSE)
     {
         return;
     }
@@ -672,7 +680,7 @@ DWORD InitializeHero(void)
 {
     DWORD Error = ERROR_SUCCESS;
 
-    gPlayer.ScreenPos.x = 64;
+    /*gPlayer.ScreenPos.x = 64;
 
     gPlayer.ScreenPos.y = 80;
 
@@ -688,14 +696,16 @@ DWORD InitializeHero(void)
 
     gCamera.x = 0;
 
-    gCamera.y = 0;
+    gCamera.y = 0;*/
+
+    gPlayer.WorldPos.x = 3856;
 
 
 Exit:
     return Error;
 }
 
-void Blit32BppBitmapToBuffer(_In_ GAMEBITMAP* GameBitmap, _In_ int16_t x, _In_ int16_t y)
+void Blit32BppBitmapToBuffer(_In_ GAMEBITMAP* GameBitmap, _In_ int16_t x, _In_ int16_t y, _In_ int16_t BrightnessAdjustment)
 {
     int32_t StartingScreenPixel = ((GAME_RES_WIDTH * GAME_RES_HEIGHT) - GAME_RES_WIDTH) - (GAME_RES_WIDTH * y) + x;
 
@@ -754,13 +764,19 @@ void Blit32BppBitmapToBuffer(_In_ GAMEBITMAP* GameBitmap, _In_ int16_t x, _In_ i
 
             if (BitmapPixel.Alpha == 255)
             {
+                BitmapPixel.Red = min(255, max((BitmapPixel.Red + BrightnessAdjustment), 0));
+
+                BitmapPixel.Blue = min(255, max((BitmapPixel.Blue + BrightnessAdjustment), 0));
+
+                BitmapPixel.Green = min(255, max((BitmapPixel.Green + BrightnessAdjustment), 0));
+
                 memcpy_s((PIXEL32*)gBackBuffer.Memory + MemoryOffset, sizeof(PIXEL32), &BitmapPixel, sizeof(PIXEL32));
             }
         }
     }
 }
 
-void BlitTileMapToBuffer(_In_ GAMEBITMAP* GameBitmap)
+void BlitTileMapToBuffer(_In_ GAMEBITMAP* GameBitmap, _In_ int16_t BrightnessAdjustment)
 {
     int32_t StartingScreenPixel = ((GAME_RES_WIDTH * GAME_RES_HEIGHT) - GAME_RES_WIDTH);
 
@@ -783,6 +799,70 @@ void BlitTileMapToBuffer(_In_ GAMEBITMAP* GameBitmap)
 
             BitmapOctaPixel = _mm256_loadu_si256((PIXEL32*)GameBitmap->Memory + BitmapOffset);
 
+            BitmapOctaPixel.m256i_u8[0] = min(255, max((BitmapOctaPixel.m256i_u8[0] + BrightnessAdjustment), 0));
+
+            BitmapOctaPixel.m256i_u8[1] = min(255, max((BitmapOctaPixel.m256i_u8[1] + BrightnessAdjustment), 0));
+
+            BitmapOctaPixel.m256i_u8[2] = min(255, max((BitmapOctaPixel.m256i_u8[2] + BrightnessAdjustment), 0));
+
+            BitmapOctaPixel.m256i_u8[3] = min(255, max((BitmapOctaPixel.m256i_u8[3] + BrightnessAdjustment), 0));
+
+            BitmapOctaPixel.m256i_u8[4] = min(255, max((BitmapOctaPixel.m256i_u8[4] + BrightnessAdjustment), 0));
+
+            BitmapOctaPixel.m256i_u8[5] = min(255, max((BitmapOctaPixel.m256i_u8[5] + BrightnessAdjustment), 0));
+
+            BitmapOctaPixel.m256i_u8[6] = min(255, max((BitmapOctaPixel.m256i_u8[6] + BrightnessAdjustment), 0));
+
+            BitmapOctaPixel.m256i_u8[7] = min(255, max((BitmapOctaPixel.m256i_u8[7] + BrightnessAdjustment), 0));
+            
+            BitmapOctaPixel.m256i_u8[8] = min(255, max((BitmapOctaPixel.m256i_u8[8] + BrightnessAdjustment), 0));
+
+            BitmapOctaPixel.m256i_u8[9] = min(255, max((BitmapOctaPixel.m256i_u8[9] + BrightnessAdjustment), 0));
+
+            BitmapOctaPixel.m256i_u8[10] = min(255, max((BitmapOctaPixel.m256i_u8[10] + BrightnessAdjustment), 0));
+
+            BitmapOctaPixel.m256i_u8[11] = min(255, max((BitmapOctaPixel.m256i_u8[11] + BrightnessAdjustment), 0));
+
+            BitmapOctaPixel.m256i_u8[12] = min(255, max((BitmapOctaPixel.m256i_u8[12] + BrightnessAdjustment), 0));
+
+            BitmapOctaPixel.m256i_u8[13] = min(255, max((BitmapOctaPixel.m256i_u8[13] + BrightnessAdjustment), 0));
+
+            BitmapOctaPixel.m256i_u8[14] = min(255, max((BitmapOctaPixel.m256i_u8[14] + BrightnessAdjustment), 0));
+
+            BitmapOctaPixel.m256i_u8[15] = min(255, max((BitmapOctaPixel.m256i_u8[15] + BrightnessAdjustment), 0));
+
+            BitmapOctaPixel.m256i_u8[16] = min(255, max((BitmapOctaPixel.m256i_u8[16] + BrightnessAdjustment), 0));
+
+            BitmapOctaPixel.m256i_u8[17] = min(255, max((BitmapOctaPixel.m256i_u8[17] + BrightnessAdjustment), 0));
+
+            BitmapOctaPixel.m256i_u8[18] = min(255, max((BitmapOctaPixel.m256i_u8[18] + BrightnessAdjustment), 0));
+
+            BitmapOctaPixel.m256i_u8[19] = min(255, max((BitmapOctaPixel.m256i_u8[19] + BrightnessAdjustment), 0));
+
+            BitmapOctaPixel.m256i_u8[20] = min(255, max((BitmapOctaPixel.m256i_u8[20] + BrightnessAdjustment), 0));
+
+            BitmapOctaPixel.m256i_u8[21] = min(255, max((BitmapOctaPixel.m256i_u8[21] + BrightnessAdjustment), 0));
+
+            BitmapOctaPixel.m256i_u8[22] = min(255, max((BitmapOctaPixel.m256i_u8[22] + BrightnessAdjustment), 0));
+
+            BitmapOctaPixel.m256i_u8[23] = min(255, max((BitmapOctaPixel.m256i_u8[23] + BrightnessAdjustment), 0));
+
+            BitmapOctaPixel.m256i_u8[24] = min(255, max((BitmapOctaPixel.m256i_u8[24] + BrightnessAdjustment), 0));
+
+            BitmapOctaPixel.m256i_u8[25] = min(255, max((BitmapOctaPixel.m256i_u8[25] + BrightnessAdjustment), 0));
+
+            BitmapOctaPixel.m256i_u8[26] = min(255, max((BitmapOctaPixel.m256i_u8[26] + BrightnessAdjustment), 0));
+
+            BitmapOctaPixel.m256i_u8[27] = min(255, max((BitmapOctaPixel.m256i_u8[27] + BrightnessAdjustment), 0));
+
+            BitmapOctaPixel.m256i_u8[28] = min(255, max((BitmapOctaPixel.m256i_u8[28] + BrightnessAdjustment), 0));
+
+            BitmapOctaPixel.m256i_u8[29] = min(255, max((BitmapOctaPixel.m256i_u8[29] + BrightnessAdjustment), 0));
+
+            BitmapOctaPixel.m256i_u8[30] = min(255, max((BitmapOctaPixel.m256i_u8[30] + BrightnessAdjustment), 0));
+
+            BitmapOctaPixel.m256i_u8[31] = min(255, max((BitmapOctaPixel.m256i_u8[31] + BrightnessAdjustment), 0));
+           
             _mm256_store_si256((PIXEL32*)gBackBuffer.Memory + MemoryOffset, BitmapOctaPixel);//
 
         }
@@ -801,6 +881,39 @@ void BlitTileMapToBuffer(_In_ GAMEBITMAP* GameBitmap)
 
             BitmapQuadPixel = _mm_load_si128((PIXEL32*)GameBitmap->Memory + BitmapOffset);
 
+            BitmapQuadPixel.m128i_u8[0] = min(255, max((BitmapQuadPixel.m128i_u8[0] + BrightnessAdjustment), 0));
+
+            BitmapQuadPixel.m128i_u8[1] = min(255, max((BitmapQuadPixel.m128i_u8[1] + BrightnessAdjustment), 0));
+
+            BitmapQuadPixel.m128i_u8[2] = min(255, max((BitmapQuadPixel.m128i_u8[2] + BrightnessAdjustment), 0));
+
+            BitmapQuadPixel.m128i_u8[3] = min(255, max((BitmapQuadPixel.m128i_u8[3] + BrightnessAdjustment), 0));
+
+            BitmapQuadPixel.m128i_u8[4] = min(255, max((BitmapQuadPixel.m128i_u8[4] + BrightnessAdjustment), 0));
+
+            BitmapQuadPixel.m128i_u8[5] = min(255, max((BitmapQuadPixel.m128i_u8[5] + BrightnessAdjustment), 0));
+
+            BitmapQuadPixel.m128i_u8[6] = min(255, max((BitmapQuadPixel.m128i_u8[6] + BrightnessAdjustment), 0));
+
+            BitmapQuadPixel.m128i_u8[7] = min(255, max((BitmapQuadPixel.m128i_u8[7] + BrightnessAdjustment), 0));
+
+            BitmapQuadPixel.m128i_u8[8] = min(255, max((BitmapQuadPixel.m128i_u8[8] + BrightnessAdjustment), 0));
+
+            BitmapQuadPixel.m128i_u8[9] = min(255, max((BitmapQuadPixel.m128i_u8[9] + BrightnessAdjustment), 0));
+
+            BitmapQuadPixel.m128i_u8[10] = min(255, max((BitmapQuadPixel.m128i_u8[10] + BrightnessAdjustment), 0));
+
+            BitmapQuadPixel.m128i_u8[11] = min(255, max((BitmapQuadPixel.m128i_u8[11] + BrightnessAdjustment), 0));
+
+            BitmapQuadPixel.m128i_u8[12] = min(255, max((BitmapQuadPixel.m128i_u8[12] + BrightnessAdjustment), 0));
+
+            BitmapQuadPixel.m128i_u8[13] = min(255, max((BitmapQuadPixel.m128i_u8[13] + BrightnessAdjustment), 0));
+
+            BitmapQuadPixel.m128i_u8[14] = min(255, max((BitmapQuadPixel.m128i_u8[14] + BrightnessAdjustment), 0));
+
+            BitmapQuadPixel.m128i_u8[15] = min(255, max((BitmapQuadPixel.m128i_u8[15] + BrightnessAdjustment), 0));
+
+
             _mm_store_si128((PIXEL32*)gBackBuffer.Memory + MemoryOffset, BitmapQuadPixel);
     }
 }
@@ -816,6 +929,12 @@ void BlitTileMapToBuffer(_In_ GAMEBITMAP* GameBitmap)
             BitmapOffset = StartingBitmapPixel + XPixel - (GameBitmap->Bitmapinfo.bmiHeader.biWidth * YPixel);
 
             memcpy_s(&BitmapPixel, sizeof(PIXEL32), (PIXEL32*)GameBitmap->Memory + BitmapOffset, sizeof(PIXEL32));
+
+            BitmapPixel.Red = min(255, max((BitmapPixel.Red + BrightnessAdjustment), 0));
+
+            BitmapPixel.Blue = min(255, max((BitmapPixel.Blue + BrightnessAdjustment), 0));
+
+            BitmapPixel.Green = min(255, max((BitmapPixel.Green + BrightnessAdjustment), 0));
 
             memcpy_s((PIXEL32*)gBackBuffer.Memory + MemoryOffset, sizeof(PIXEL32), &BitmapPixel, sizeof(PIXEL32));
 
@@ -1535,7 +1654,7 @@ void BlitStringToBuffer(_In_ char* String, _In_ GAMEBITMAP* FontSheet, _In_ PIXE
     }
 
 
-    Blit32BppBitmapToBuffer(&StringBitmap, x, y);
+    Blit32BppBitmapToBuffer(&StringBitmap, x, y, 0);
 
     if (StringBitmap.Memory)
     {
@@ -1600,7 +1719,7 @@ void RednerFrameGraphics(void)
         }
     }
 
-    __m128i QuadPixel = {0x7f, 0x00, 0x00, 0xff, 0x7f, 0x00, 0x00, 0xff, 0x7f, 0x00, 0x00, 0xff, 0x7f, 0x00, 0x00, 0xff };
+    //__m128i QuadPixel = {0x7f, 0x00, 0x00, 0xff, 0x7f, 0x00, 0x00, 0xff, 0x7f, 0x00, 0x00, 0xff, 0x7f, 0x00, 0x00, 0xff };
 
 //#ifdef SIMD
 //    ClearScreen(&QuadPixel);
@@ -1757,11 +1876,209 @@ DWORD LoadRegistryParameters(void)
         }
     }
 
-    LogMessageA(Informational, "[% s] MusicVolume is %.1f.", __FUNCTION__, (float)gRegistryParams.MusicVolume / 100);
+    LogMessageA(Informational, "[%s] MusicVolume is %.1f.", __FUNCTION__, (float)gRegistryParams.MusicVolume / 100);
 
     gMusicVolume = (float)gRegistryParams.MusicVolume / 100.f;
 
     gSFXVolume = (float)gRegistryParams.SFXVolume / 100.f;
+
+    Result = RegGetValueA(RegKey, NULL, "gPlayer.WorldPos.x", RRF_RT_DWORD, NULL, (BYTE*)&gPlayer.WorldPos.x, &RegBytesRead);
+
+    if (Result != ERROR_SUCCESS)
+    {
+        if (Result == ERROR_FILE_NOT_FOUND)
+        {
+            Result = ERROR_SUCCESS;
+
+            LogMessageA(Informational, "[%s] Registry value 'gPlayer.WorldPos.x' not found. Using default of 64", __FUNCTION__);
+
+            gPlayer.WorldPos.x = 64;
+        }
+        else
+        {
+            LogMessageA(Error, "[%s] Failed to read the 'gPlayer.WorldPos.x' registry value! Error 0x%08lx!", __FUNCTION__, Result);
+
+            goto Exit;
+        }
+    }
+
+    LogMessageA(Informational, "[%s] gPlayer.WorldPos.x is %d", __FUNCTION__, gPlayer.WorldPos.x);
+
+    Result = RegGetValueA(RegKey, NULL, "gPlayer.WorldPos.y", RRF_RT_DWORD, NULL, (BYTE*)&gPlayer.WorldPos.y, &RegBytesRead);
+
+    if (Result != ERROR_SUCCESS)
+    {
+        if (Result == ERROR_FILE_NOT_FOUND)
+        {
+            Result = ERROR_SUCCESS;
+
+            LogMessageA(Informational, "[%s] Registry value 'gPlayer.WorldPos.y' not found. Using default of 80", __FUNCTION__);
+
+            gPlayer.WorldPos.y = 80;
+        }
+        else
+        {
+            LogMessageA(Error, "[%s] Failed to read the 'gPlayer.WorldPos.y' registry value! Error 0x%08lx!", __FUNCTION__, Result);
+
+            goto Exit;
+        }
+    }
+
+    LogMessageA(Informational, "[%s] gPlayer.WorldPos.y is %d", __FUNCTION__, gPlayer.WorldPos.y);
+
+    Result = RegGetValueA(RegKey, NULL, "gPlayer.ScreenPos.x", RRF_RT_DWORD, NULL, (BYTE*)&gPlayer.ScreenPos.x, &RegBytesRead);
+
+    if (Result != ERROR_SUCCESS)
+    {
+        if (Result == ERROR_FILE_NOT_FOUND)
+        {
+            Result = ERROR_SUCCESS;
+
+            LogMessageA(Informational, "[%s] Registry value 'gPlayer.ScreenPos.x' not found. Using default of 64", __FUNCTION__);
+
+            gPlayer.ScreenPos.x = 64;
+        }
+        else
+        {
+            LogMessageA(Error, "[%s] Failed to read the 'gPlayer.ScreenPos.x' registry value! Error 0x%08lx!", __FUNCTION__, Result);
+
+            goto Exit;
+        }
+    }
+
+    LogMessageA(Informational, "[%s] gPlayer.ScreenPos.x is %d", __FUNCTION__, gPlayer.ScreenPos.x);
+
+    Result = RegGetValueA(RegKey, NULL, "gPlayer.ScreenPos.y", RRF_RT_DWORD, NULL, (BYTE*)&gPlayer.ScreenPos.y, &RegBytesRead);
+
+    if (Result != ERROR_SUCCESS)
+    {
+        if (Result == ERROR_FILE_NOT_FOUND)
+        {
+            Result = ERROR_SUCCESS;
+
+            LogMessageA(Informational, "[%s] Registry value 'gPlayer.ScreenPos.x' not found. Using default of 80", __FUNCTION__);
+
+            gPlayer.ScreenPos.y = 80;
+        }
+        else
+        {
+            LogMessageA(Error, "[%s] Failed to read the 'gPlayer.ScreenPos.y' registry value! Error 0x%08lx!", __FUNCTION__, Result);
+
+            goto Exit;
+        }
+    }
+
+    LogMessageA(Informational, "[%s] gPlayer.ScreenPos.y is %d", __FUNCTION__, gPlayer.ScreenPos.y);
+
+    Result = RegGetValueA(RegKey, NULL, "gCamera.x", RRF_RT_DWORD, NULL, (BYTE*)&gCamera.x, &RegBytesRead);
+
+    if (Result != ERROR_SUCCESS)
+    {
+        if (Result == ERROR_FILE_NOT_FOUND)
+        {
+            Result = ERROR_SUCCESS;
+
+            LogMessageA(Informational, "[%s] Registry value 'gCamera.x' not found. Using default of 0", __FUNCTION__);
+
+            gCamera.x = 0;
+        }
+        else
+        {
+            LogMessageA(Error, "[%s] Failed to read the 'gCamera.x' registry value! Error 0x%08lx!", __FUNCTION__, Result);
+
+            goto Exit;
+        }
+    }
+
+    LogMessageA(Informational, "[%s] gCamera.x is %d", __FUNCTION__, gCamera.x);
+
+    Result = RegGetValueA(RegKey, NULL, "gCamera.y", RRF_RT_DWORD, NULL, (BYTE*)&gCamera.y, &RegBytesRead);
+
+    if (Result != ERROR_SUCCESS)
+    {
+        if (Result == ERROR_FILE_NOT_FOUND)
+        {
+            Result = ERROR_SUCCESS;
+
+            LogMessageA(Informational, "[%s] Registry value 'gCamera.y' not found. Using default of 0", __FUNCTION__);
+
+            gCamera.y = 0;
+        }
+        else
+        {
+            LogMessageA(Error, "[%s] Failed to read the 'gCamera.y' registry value! Error 0x%08lx!", __FUNCTION__, Result);
+
+            goto Exit;
+        }
+    }
+
+    LogMessageA(Informational, "[%s] gCamera.y is %d", __FUNCTION__, gCamera.y);
+
+    Result = RegGetValueA(RegKey, NULL, "gPlayer.Direction", RRF_RT_DWORD, NULL, (BYTE*)&gPlayer.Direction, &RegBytesRead);
+
+    if (Result != ERROR_SUCCESS)
+    {
+        if (Result == ERROR_FILE_NOT_FOUND)
+        {
+            Result = ERROR_SUCCESS;
+
+            LogMessageA(Informational, "[%s] Registry value 'gPlayer.Direction' not found. Using default of DIRECTION_DOWN", __FUNCTION__);
+
+            gPlayer.Direction = DIRECTION_DOWN;
+        }
+        else
+        {
+            LogMessageA(Error, "[%s] Failed to read the 'gPlayer.Direction' registry value! Error 0x%08lx!", __FUNCTION__, Result);
+
+            goto Exit;
+        }
+    }
+
+    LogMessageA(Informational, "[%s] gPlayer.Direction is %d", __FUNCTION__, gPlayer.Direction);
+
+    Result = RegGetValueA(RegKey, NULL, "gPlayer.CurrentArmor", RRF_RT_DWORD, NULL, (BYTE*)&gPlayer.CurrentArmor, &RegBytesRead);
+
+    if (Result != ERROR_SUCCESS)
+    {
+        if (Result == ERROR_FILE_NOT_FOUND)
+        {
+            Result = ERROR_SUCCESS;
+
+            LogMessageA(Informational, "[%s] Registry value 'gPlayer.CurrentArmor' not found. Using default of SUIT_0", __FUNCTION__);
+
+            gPlayer.CurrentArmor = SUIT_0;
+        }
+        else
+        {
+            LogMessageA(Error, "[%s] Failed to read the 'gPlayer.CurrentArmor' registry value! Error 0x%08lx!", __FUNCTION__, Result);
+
+            goto Exit;
+        }
+    }
+
+    LogMessageA(Informational, "[%s] gPlayer.CurrentArmor is %d", __FUNCTION__, gPlayer.CurrentArmor);
+
+    Result = RegGetValueA(RegKey, NULL, "gPlayer.MovementRemaining", RRF_RT_DWORD, NULL, (BYTE*)&gPlayer.MovementRemaining, &RegBytesRead);
+
+    if (Result != ERROR_SUCCESS)
+    {
+        if (Result == ERROR_FILE_NOT_FOUND)
+        {
+            Result = ERROR_SUCCESS;
+
+            LogMessageA(Informational, "[%s] Registry value 'gPlayer.MovementRemaining' not found. Using default of 0", __FUNCTION__);
+
+            gPlayer.MovementRemaining = 0;
+        }
+        else
+        {
+            LogMessageA(Error, "[%s] Failed to read the 'gPlayer.MovementRemaining' registry value! Error 0x%08lx!", __FUNCTION__, Result);
+
+            goto Exit;
+        }
+    }
+
+    LogMessageA(Informational, "[%s] gPlayer.MovementRemaining is %d", __FUNCTION__, gPlayer.MovementRemaining);
 
 Exit:
 
@@ -1793,6 +2110,24 @@ DWORD SaveRegistryParametars(void)
     DWORD SFXVolume = (DWORD)(gSFXVolume * 100);
 
     DWORD MusicVolume = (DWORD)(gMusicVolume * 100);
+
+    DWORD WorldPosX = gPlayer.WorldPos.x;
+
+    DWORD WorldPosY = gPlayer.WorldPos.y;
+
+    DWORD ScreenPosX = gPlayer.ScreenPos.x;
+
+    DWORD ScreenPosY = gPlayer.ScreenPos.y;
+
+    DWORD CameraX = gCamera.x;
+
+    DWORD CameraY = gCamera.y;
+
+    DWORD CurrentArmor = gPlayer.CurrentArmor;
+
+    DWORD Direction = gPlayer.Direction;
+
+    DWORD MovementRemaining = gPlayer.MovementRemaining;
 
     LogMessageA(Informational, "[%s] RegKey open for save", __FUNCTION__);
 
@@ -1829,6 +2164,104 @@ DWORD SaveRegistryParametars(void)
 
     LogMessageA(Informational, "[%s] ScaleFactor saved: %d", __FUNCTION__, gPerformanceData.CurrentScaleFactor);
 
+    Result = RegSetValueExA(RegKey, "gPlayer.WorldPos.x", 0, REG_DWORD, &WorldPosX, sizeof(DWORD));
+
+    if (Result != ERROR_SUCCESS)
+    {
+        LogMessageA(Error, "[%s] Failed to set 'gPlayer.WorldPos.x' in the registry! Error 0x%08lx!", __FUNCTION__, Result);
+
+        goto Exit;
+    }
+
+    LogMessageA(Informational, "[%s] gPlayer.WorldPos.x saved: %d", __FUNCTION__, gPlayer.WorldPos.x);
+
+    Result = RegSetValueExA(RegKey, "gPlayer.WorldPos.y", 0, REG_DWORD, &WorldPosY, sizeof(DWORD));
+
+    if (Result != ERROR_SUCCESS)
+    {
+        LogMessageA(Error, "[%s] Failed to set 'gPlayer.WorldPos.y' in the registry! Error 0x%08lx!", __FUNCTION__, Result);
+
+        goto Exit;
+    }
+
+    LogMessageA(Informational, "[%s] gPlayer.WorldPos.y saved: %d", __FUNCTION__, WorldPosY);
+
+    Result = RegSetValueExA(RegKey, "gPlayer.ScreenPos.x", 0, REG_DWORD, &ScreenPosX, sizeof(DWORD));
+
+    if (Result != ERROR_SUCCESS)
+    {
+        LogMessageA(Error, "[%s] Failed to set 'gPlayer.ScreenPos.x' in the registry! Error 0x%08lx!", __FUNCTION__, Result);
+
+        goto Exit;
+    }
+
+    LogMessageA(Informational, "[%s] gPlayer.ScreenPos.x saved: %d", __FUNCTION__, gPlayer.ScreenPos.x);
+
+    Result = RegSetValueExA(RegKey, "gPlayer.ScreenPos.y", 0, REG_DWORD, &ScreenPosY, sizeof(DWORD));
+
+    if (Result != ERROR_SUCCESS)
+    {
+        LogMessageA(Error, "[%s] Failed to set 'gPlayer.ScreenPos.y' in the registry! Error 0x%08lx!", __FUNCTION__, Result);
+
+        goto Exit;
+    }
+
+    LogMessageA(Informational, "[%s] gPlayer.ScreenPos.y saved: %d", __FUNCTION__, gPlayer.ScreenPos.y);
+
+    Result = RegSetValueExA(RegKey, "gCamera.x", 0, REG_DWORD, &CameraX, sizeof(DWORD));
+
+    if (Result != ERROR_SUCCESS)
+    {
+        LogMessageA(Error, "[%s] Failed to set 'gCamera.x' in the registry! Error 0x%08lx!", __FUNCTION__, Result);
+
+        goto Exit;
+    }
+
+    LogMessageA(Informational, "[%s] gCamera.x saved: %d", __FUNCTION__, gCamera.x);
+
+    Result = RegSetValueExA(RegKey, "gCamera.y", 0, REG_DWORD, &CameraY, sizeof(DWORD));
+
+    if (Result != ERROR_SUCCESS)
+    {
+        LogMessageA(Error, "[%s] Failed to set 'gCamera.y' in the registry! Error 0x%08lx!", __FUNCTION__, Result);
+
+        goto Exit;
+    }
+
+    LogMessageA(Informational, "[%s] gCamera.y saved: %d", __FUNCTION__, gCamera.y);
+
+    Result = RegSetValueExA(RegKey, "gPlayer.Direction", 0, REG_DWORD, &Direction, sizeof(DWORD));
+
+    if (Result != ERROR_SUCCESS)
+    {
+        LogMessageA(Error, "[%s] Failed to set 'gPlayer.Direction' in the registry! Error 0x%08lx!", __FUNCTION__, Result);
+
+        goto Exit;
+    }
+
+    LogMessageA(Informational, "[%s] gPlayer.Direction saved: %d", __FUNCTION__, gPlayer.Direction);
+
+    Result = RegSetValueExA(RegKey, "gPlayer.MovementRemaining", 0, REG_DWORD, &MovementRemaining, sizeof(DWORD));
+
+    if (Result != ERROR_SUCCESS)
+    {
+        LogMessageA(Error, "[%s] Failed to set 'gPlayer.MovementRemaining' in the registry! Error 0x%08lx!", __FUNCTION__, Result);
+
+        goto Exit;
+    }
+
+    LogMessageA(Informational, "[%s] gPlayer.MovementRemaining saved: %d", __FUNCTION__, gPlayer.MovementRemaining);
+
+    Result = RegSetValueExA(RegKey, "gPlayer.CurrentArmor", 0, REG_DWORD, &CurrentArmor, sizeof(DWORD));
+
+    if (Result != ERROR_SUCCESS)
+    {
+        LogMessageA(Error, "[%s] Failed to set 'gPlayer.CurrentAromro' in the registry! Error 0x%08lx!", __FUNCTION__, Result);
+
+        goto Exit;
+    }
+
+    LogMessageA(Informational, "[%s] gPlayer.CurrentArmor saved: %d", __FUNCTION__, gPlayer.CurrentArmor);
 
 Exit:
 
