@@ -202,10 +202,10 @@ void PPI_Overworld(void)
 
         gPreviousGameState = GAMESTATE_OVERWORLD;
 
-        if (SaveRegistryParametars() != ERROR_SUCCESS)
+        /*if (SaveRegistryParametars() != ERROR_SUCCESS)
         {
             LogMessageA(Error, "[%s] SaveRegistryParameters failed!", __FUNCTION__);
-        }
+        }*/
     }
 
     if (!gPlayer.MovementRemaining)

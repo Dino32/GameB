@@ -28,7 +28,7 @@
 
 #pragma comment(lib, "Winmm.lib")
 
-#define AVX
+//#define AVX
 
 #ifdef AVX
 
@@ -143,6 +143,10 @@ typedef enum GAMESATE
 	GAMESTATE_EXITYESNOSCREEN,
 
 	GAMESTATE_GAMEPADUNPLUGGED,
+
+	GAMESTATE_SAVEGAME,
+
+	GAMESTATE_NEWGAMEPROMPT
 
 } GAMESTATE;
 
@@ -340,6 +344,12 @@ typedef struct REGISTRYPARAMS
 
 	DWORD Direction;
 
+	DWORD GameSaved;
+
+	char Name[9];
+
+	char* Ime[9];
+
 } REGISTRYPARAMS;
 
 typedef struct MENUITEM
@@ -447,6 +457,12 @@ UPOINT gCamera;
 HANDLE gAssetLoadingThreadHandle;
 
 uint8_t gPassablieTiles[5];
+
+RECT gCurrentArea;
+
+RECT gOverwrldArea;
+
+RECT gDungeon1Area;
 
 // This event gets signalled after the most essential assets have been loaded 
 // "Essential" means the assets required to render the splash screen

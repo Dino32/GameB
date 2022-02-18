@@ -3,7 +3,6 @@
 
 // Title Screen
 
-MENUITEM gMI_ResumeGame = { "Resume", (GAME_RES_WIDTH / 2) - ((6 * 6) / 2), 100, FALSE,  MenuItem_TitleScreen_Resume };
 
 MENUITEM gMI_StartNewGame = { "Start New Game", (GAME_RES_WIDTH / 2) - ((14 * 6) / 2), 120, TRUE,  MenuItem_TitleScree_StartNew };
 
@@ -11,9 +10,13 @@ MENUITEM gMI_Options = { "Options", (GAME_RES_WIDTH / 2) - ((7 * 6) / 2), 140, T
 
 MENUITEM gMI_Exit = { "Exit", (GAME_RES_WIDTH / 2) - ((5 * 6) / 2), 160, TRUE, MenuItem_TitleScree_Exit };
 
-MENUITEM* gMI_TitleScreenItems[] = { &gMI_ResumeGame, &gMI_StartNewGame, &gMI_Options, &gMI_Exit };
+MENUITEM gMI_Save = { "Save Game", (GAME_RES_WIDTH / 2) - (9 * 6) / 2, 180, TRUE, MenuItem_TitleScreen_Save};
 
-MENU gMenu_TitleScreen = { "Title Screen Menu", 1, _countof(gMI_TitleScreenItems), gMI_TitleScreenItems };
+MENUITEM gMI_ContinueGame = { "Continue Game", (GAME_RES_WIDTH / 2) - (13 * 6) / 2, 100, TRUE, MenuItem_TitleScreen_LoadGame};
+
+MENUITEM* gMI_TitleScreenItems[] = { &gMI_ContinueGame, &gMI_StartNewGame, &gMI_Options, &gMI_Exit, &gMI_Save };
+
+MENU gMenu_TitleScreen = { "Title Screen Menu", 0, _countof(gMI_TitleScreenItems), gMI_TitleScreenItems };
 
 //
 
@@ -40,15 +43,46 @@ void DrawTitleScreen(void)
 
         TextColor.Green = 0x00;
 
-        if (gPlayer.Active)
+        if (!gPlayer.Active && gRegistryParams.GameSaved != 1)
         {
-            gMenu_TitleScreen.SelectedItem = 0;
+            gMI_ContinueGame.Enabled = FALSE;
 
-            gMI_ResumeGame.Enabled = TRUE;
-        }
-        else
-        {
+            gMI_Save.Enabled = FALSE;
+
             gMenu_TitleScreen.SelectedItem = 1;
+        }
+        else if (!gPlayer.Active && gRegistryParams.GameSaved == 1)
+        {
+            gMI_ContinueGame.Enabled = TRUE;
+
+            gMI_Save.Enabled = FALSE;
+
+            gMenu_TitleScreen.SelectedItem = 0;
+        } 
+        else if (gPlayer.Active && gRegistryParams.GameSaved != 1)
+        {
+            gMI_ContinueGame.Enabled = TRUE;
+
+            gMI_Save.Enabled = TRUE;
+
+            gMenu_TitleScreen.SelectedItem = 0;
+        } 
+        else if (gPlayer.Active && gRegistryParams.GameSaved == 1)
+        {
+            gMI_ContinueGame.Enabled = TRUE;
+
+            gMI_Save.Enabled = TRUE;
+
+            gMenu_TitleScreen.SelectedItem = 0;
+        }
+
+        if (gPreviousGameState == GAMESTATE_NEWGAMEPROMPT && gRegistryParams.GameSaved == 1)
+        {
+            gMI_ContinueGame.Enabled = TRUE;
+
+            gMI_Save.Enabled = FALSE;
+
+            gMenu_TitleScreen.SelectedItem = 0;
         }
 
         gInputEnabled = FALSE;
@@ -87,10 +121,16 @@ void DrawTitleScreen(void)
         {
             BlitStringToBuffer(gMenu_TitleScreen.Items[MenuItem]->Name, &g6x7Font, TextColor, gMenu_TitleScreen.Items[MenuItem]->x, gMenu_TitleScreen.Items[MenuItem]->y);
         }
+        /*if (gPreviousGameState == GAMESTATE_CHARACTERNAMING && MenuItem == 0)
+        {
+            BlitStringToBuffer(gMenu_TitleScreen.Items[MenuItem]->Name, &g6x7Font, TextColor, gMenu_TitleScreen.Items[MenuItem]->x, gMenu_TitleScreen.Items[MenuItem]->y);
+        }*/
     }
 
-    BlitStringToBuffer("\xbb", &g6x7Font, TextColor, gMenu_TitleScreen.Items[gMenu_TitleScreen.SelectedItem]->x - 6, gMenu_TitleScreen.Items[gMenu_TitleScreen.SelectedItem]->y);
-
+    if (gMenu_TitleScreen.Items[gMenu_TitleScreen.SelectedItem]->Enabled)
+    {
+        BlitStringToBuffer("\xbb", &g6x7Font, TextColor, gMenu_TitleScreen.Items[gMenu_TitleScreen.SelectedItem]->x - 6, gMenu_TitleScreen.Items[gMenu_TitleScreen.SelectedItem]->y);
+    }
 
     LocalFrameCounter++;
 
@@ -103,7 +143,7 @@ void PPI_TitleScreen(void)
 
     if (gGameInput.DownKeyIsDown && !gGameInput.DownKeyWasDown)
     {
-        if (gMenu_TitleScreen.SelectedItem < gMenu_TitleScreen.ItemCount - 1)
+        if (gMenu_TitleScreen.SelectedItem < gMenu_TitleScreen.ItemCount - 1 && gMenu_TitleScreen.Items[gMenu_TitleScreen.SelectedItem + 1]->Enabled)
         {
             gMenu_TitleScreen.SelectedItem++;
 
@@ -115,14 +155,15 @@ void PPI_TitleScreen(void)
     {
         if (gMenu_TitleScreen.SelectedItem > 0)
         {
-            if (gMenu_TitleScreen.SelectedItem == 1)
+            if (gMenu_TitleScreen.SelectedItem == 1 && gRegistryParams.GameSaved == 1)
             {
-                if (gPlayer.Active)
-                {
-                    gMenu_TitleScreen.SelectedItem--;
+                gMenu_TitleScreen.SelectedItem--;
 
-                    PlayGameSound(&gSoundMenuNavigate);
-                }
+                PlayGameSound(&gSoundMenuNavigate);
+            }
+            else if (gMenu_TitleScreen.SelectedItem == 1 && gRegistryParams.GameSaved == 0)
+            {
+
             }
             else
             {
@@ -131,6 +172,8 @@ void PPI_TitleScreen(void)
                 PlayGameSound(&gSoundMenuNavigate);
             }
         }
+
+        
     }
 
     if (gGameInput.ChooseKeyIsDown && !gGameInput.ChooseKeyWasDown)
@@ -143,7 +186,9 @@ void PPI_TitleScreen(void)
 
 void MenuItem_TitleScreen_Resume(void)
 {
+    gPreviousGameState = gCurrentGameState;
 
+    gCurrentGameState = GAMESTATE_OVERWORLD;
 }
 
 void MenuItem_TitleScree_StartNew(void)
@@ -154,7 +199,7 @@ void MenuItem_TitleScree_StartNew(void)
 
     gPreviousGameState = gCurrentGameState;
 
-    gCurrentGameState = GAMESTATE_CHARACTERNAMING;
+    gCurrentGameState = GAMESTATE_NEWGAMEPROMPT;
 
     LogMessageA(Informational, "[%s] gPlayer.WorldPos.x is %d", __FUNCTION__, gPlayer.WorldPos.x);
 }
@@ -171,4 +216,27 @@ void MenuItem_TitleScree_Exit(void)
     gPreviousGameState = gCurrentGameState;
 
     gCurrentGameState = GAMESTATE_EXITYESNOSCREEN;
+}
+
+void MenuItem_TitleScreen_Save(void)
+{
+    gRegistryParams.GameSaved = 1;
+
+    if (SaveRegistryParametars() != ERROR_SUCCESS)
+    {
+        LogMessageA(Error, "[%s] SaveRegistryParameters failed!", __FUNCTION__);
+    }
+
+    gPreviousGameState = gCurrentGameState;
+
+    gCurrentGameState = GAMESTATE_SAVEGAME;
+}
+
+void MenuItem_TitleScreen_LoadGame(void)
+{
+    gPlayer.Active = TRUE;
+
+    gPreviousGameState = gCurrentGameState;
+
+    gCurrentGameState = GAMESTATE_OVERWORLD;
 }

@@ -1,9 +1,7 @@
 // Dino Babic
 // TODO:
-// Add Resume game in title screen
-// Save all the progress made in game (gold, woods, kills, things like that)
-// When player is in the overworld and presses escape it shoudl take hime to the title screen
 // Draw message dialogs that will lead user on what to do
+// There still might be some bugs when choosing "Start New Game" or "Continue Game"
 
 #include "Main.h" 
 
@@ -12,6 +10,11 @@
 #include "stb_vorbis.h"
 
 #include "Overworld.h"
+
+#include "GameSaved.h"
+
+#include "NewGamePrompt.h"
+
 
 // This critical section is used to synchronize logging between multiple threads
 CRITICAL_SECTION gLogCritSec;
@@ -562,6 +565,18 @@ void ProcessPlayerInput(void)
             
             break;
         }
+        case GAMESTATE_SAVEGAME:
+        {
+            PPI_GameSavedScreen();
+
+            break;
+        }
+        case GAMESTATE_NEWGAMEPROMPT:
+        {
+            PPI_NewGame();
+
+            break;
+        }
         default:
         {
             ASSERT(FALSE, "Unknow game state!");
@@ -799,7 +814,7 @@ void BlitTileMapToBuffer(_In_ GAMEBITMAP* GameBitmap, _In_ int16_t BrightnessAdj
     int32_t BitmapOffset = 0;
 
 #ifdef AVX
-    __m256i BitmapOctaPixel;
+    __m256i BitmapOctoPixel;
 
     for (int16_t YPixel = 0; YPixel < GAME_RES_HEIGHT; YPixel++)
     {
@@ -809,126 +824,41 @@ void BlitTileMapToBuffer(_In_ GAMEBITMAP* GameBitmap, _In_ int16_t BrightnessAdj
 
             BitmapOffset = StartingBitmapPixel + XPixel - (GameBitmap->Bitmapinfo.bmiHeader.biWidth * YPixel);
 
-            BitmapOctaPixel = _mm256_loadu_si256((PIXEL32*)GameBitmap->Memory + BitmapOffset);
+            // Load 256 bits (8 pixels) from memory into register YMMx
+            BitmapOctoPixel = _mm256_load_si256((const __m256i*)((PIXEL32*)GameBitmap->Memory + BitmapOffset));
+            //        AARRGGBBAARRGGBB-AARRGGBBAARRGGBB-AARRGGBBAARRGGBB-AARRGGBBAARRGGBB
+            // YMM0 = FF5B6EE1FF5B6EE1-FF5B6EE1FF5B6EE1-FF5B6EE1FF5B6EE1-FF5B6EE1FF5B6EE1
 
-            BitmapOctaPixel.m256i_u8[0] = min(255, max((BitmapOctaPixel.m256i_u8[0] + BrightnessAdjustment), 0));
+            // Blow the 256-bit vector apart into two separate 256-bit vectors Half1 and Half2, 
+            // each containing 4 pixels, where each pixel is now 16 bits instead of 8.            
 
-            BitmapOctaPixel.m256i_u8[1] = min(255, max((BitmapOctaPixel.m256i_u8[1] + BrightnessAdjustment), 0));
+            __m256i Half1 = _mm256_cvtepu8_epi16(_mm256_extracti128_si256(BitmapOctoPixel, 0));
+            //        AAAARRRRGGGGBBBB-AAAARRRRGGGGBBBB-AAAARRRRGGGGBBBB-AAAARRRRGGGGBBBB
+            // YMM0 = 00FF005B006E00E1-00FF005B006E00E1-00FF005B006E00E1-00FF005B006E00E1
 
-            BitmapOctaPixel.m256i_u8[2] = min(255, max((BitmapOctaPixel.m256i_u8[2] + BrightnessAdjustment), 0));
+            // Add the brightness adjustment to each 16-bit element
+            Half1 = _mm256_add_epi16(Half1, _mm256_set1_epi16(BrightnessAdjustment));
+            // YMM0 = 0000FF5CFF6FFFE2-0000FF5CFF6FFFE2-0000FF5CFF6FFFE2-0000FF5CFF6FFFE2
 
-            BitmapOctaPixel.m256i_u8[3] = min(255, max((BitmapOctaPixel.m256i_u8[3] + BrightnessAdjustment), 0));
+            // Do the same for Half2 that we just did for Half1.
+            __m256i Half2 = _mm256_cvtepu8_epi16(_mm256_extracti128_si256(BitmapOctoPixel, 1));
 
-            BitmapOctaPixel.m256i_u8[4] = min(255, max((BitmapOctaPixel.m256i_u8[4] + BrightnessAdjustment), 0));
+            Half2 = _mm256_add_epi16(Half2, _mm256_set1_epi16(BrightnessAdjustment));
 
-            BitmapOctaPixel.m256i_u8[5] = min(255, max((BitmapOctaPixel.m256i_u8[5] + BrightnessAdjustment), 0));
+            // Now we need to reassemble the two halves back into a single 256-bit group of 8 pixels.
+            // _mm256_packus_epi16(a,b) takes the 16-bit signed integers in the 256-bit vectors a and b
+            // and converts them to a 256-bit vector of 8-bit unsigned integers. The result contains the
+            // first 8 integers from a, followed by the first 8 integers from b, followed by the last 8
+            // integers from a, followed by the last 8 integers from b.
+            // Values that are out of range are set to 0 or 255.
+            __m256i Recombined = _mm256_packus_epi16(Half1, Half2);
 
-            BitmapOctaPixel.m256i_u8[6] = min(255, max((BitmapOctaPixel.m256i_u8[6] + BrightnessAdjustment), 0));
+            BitmapOctoPixel = _mm256_permute4x64_epi64(Recombined, _MM_SHUFFLE(3, 1, 2, 0));
 
-            BitmapOctaPixel.m256i_u8[7] = min(255, max((BitmapOctaPixel.m256i_u8[7] + BrightnessAdjustment), 0));
-            
-            BitmapOctaPixel.m256i_u8[8] = min(255, max((BitmapOctaPixel.m256i_u8[8] + BrightnessAdjustment), 0));
-
-            BitmapOctaPixel.m256i_u8[9] = min(255, max((BitmapOctaPixel.m256i_u8[9] + BrightnessAdjustment), 0));
-
-            BitmapOctaPixel.m256i_u8[10] = min(255, max((BitmapOctaPixel.m256i_u8[10] + BrightnessAdjustment), 0));
-
-            BitmapOctaPixel.m256i_u8[11] = min(255, max((BitmapOctaPixel.m256i_u8[11] + BrightnessAdjustment), 0));
-
-            BitmapOctaPixel.m256i_u8[12] = min(255, max((BitmapOctaPixel.m256i_u8[12] + BrightnessAdjustment), 0));
-
-            BitmapOctaPixel.m256i_u8[13] = min(255, max((BitmapOctaPixel.m256i_u8[13] + BrightnessAdjustment), 0));
-
-            BitmapOctaPixel.m256i_u8[14] = min(255, max((BitmapOctaPixel.m256i_u8[14] + BrightnessAdjustment), 0));
-
-            BitmapOctaPixel.m256i_u8[15] = min(255, max((BitmapOctaPixel.m256i_u8[15] + BrightnessAdjustment), 0));
-
-            BitmapOctaPixel.m256i_u8[16] = min(255, max((BitmapOctaPixel.m256i_u8[16] + BrightnessAdjustment), 0));
-
-            BitmapOctaPixel.m256i_u8[17] = min(255, max((BitmapOctaPixel.m256i_u8[17] + BrightnessAdjustment), 0));
-
-            BitmapOctaPixel.m256i_u8[18] = min(255, max((BitmapOctaPixel.m256i_u8[18] + BrightnessAdjustment), 0));
-
-            BitmapOctaPixel.m256i_u8[19] = min(255, max((BitmapOctaPixel.m256i_u8[19] + BrightnessAdjustment), 0));
-
-            BitmapOctaPixel.m256i_u8[20] = min(255, max((BitmapOctaPixel.m256i_u8[20] + BrightnessAdjustment), 0));
-
-            BitmapOctaPixel.m256i_u8[21] = min(255, max((BitmapOctaPixel.m256i_u8[21] + BrightnessAdjustment), 0));
-
-            BitmapOctaPixel.m256i_u8[22] = min(255, max((BitmapOctaPixel.m256i_u8[22] + BrightnessAdjustment), 0));
-
-            BitmapOctaPixel.m256i_u8[23] = min(255, max((BitmapOctaPixel.m256i_u8[23] + BrightnessAdjustment), 0));
-
-            BitmapOctaPixel.m256i_u8[24] = min(255, max((BitmapOctaPixel.m256i_u8[24] + BrightnessAdjustment), 0));
-
-            BitmapOctaPixel.m256i_u8[25] = min(255, max((BitmapOctaPixel.m256i_u8[25] + BrightnessAdjustment), 0));
-
-            BitmapOctaPixel.m256i_u8[26] = min(255, max((BitmapOctaPixel.m256i_u8[26] + BrightnessAdjustment), 0));
-
-            BitmapOctaPixel.m256i_u8[27] = min(255, max((BitmapOctaPixel.m256i_u8[27] + BrightnessAdjustment), 0));
-
-            BitmapOctaPixel.m256i_u8[28] = min(255, max((BitmapOctaPixel.m256i_u8[28] + BrightnessAdjustment), 0));
-
-            BitmapOctaPixel.m256i_u8[29] = min(255, max((BitmapOctaPixel.m256i_u8[29] + BrightnessAdjustment), 0));
-
-            BitmapOctaPixel.m256i_u8[30] = min(255, max((BitmapOctaPixel.m256i_u8[30] + BrightnessAdjustment), 0));
-
-            BitmapOctaPixel.m256i_u8[31] = min(255, max((BitmapOctaPixel.m256i_u8[31] + BrightnessAdjustment), 0));
-           
-            _mm256_store_si256((PIXEL32*)gBackBuffer.Memory + MemoryOffset, BitmapOctaPixel);//
-
+            // Store the result to the global back buffer.
+            _mm256_store_si256((__m256i*)((PIXEL32*)gBackBuffer.Memory + MemoryOffset), BitmapOctoPixel);
         }
     }
-
-#elif defined SSE2
-    __m128i BitmapQuadPixel;
-
-    for (int16_t YPixel = 0; YPixel < GAME_RES_HEIGHT; YPixel++)
-    {
-        for (int16_t XPixel = 0; XPixel < GAME_RES_WIDTH; XPixel += 4)
-        {
-            MemoryOffset = StartingScreenPixel + XPixel - (GAME_RES_WIDTH * YPixel);
-
-            BitmapOffset = StartingBitmapPixel + XPixel - (GameBitmap->Bitmapinfo.bmiHeader.biWidth * YPixel);
-
-            BitmapQuadPixel = _mm_load_si128((PIXEL32*)GameBitmap->Memory + BitmapOffset);
-
-            BitmapQuadPixel.m128i_u8[0] = min(255, max((BitmapQuadPixel.m128i_u8[0] + BrightnessAdjustment), 0));
-
-            BitmapQuadPixel.m128i_u8[1] = min(255, max((BitmapQuadPixel.m128i_u8[1] + BrightnessAdjustment), 0));
-
-            BitmapQuadPixel.m128i_u8[2] = min(255, max((BitmapQuadPixel.m128i_u8[2] + BrightnessAdjustment), 0));
-
-            BitmapQuadPixel.m128i_u8[3] = min(255, max((BitmapQuadPixel.m128i_u8[3] + BrightnessAdjustment), 0));
-
-            BitmapQuadPixel.m128i_u8[4] = min(255, max((BitmapQuadPixel.m128i_u8[4] + BrightnessAdjustment), 0));
-
-            BitmapQuadPixel.m128i_u8[5] = min(255, max((BitmapQuadPixel.m128i_u8[5] + BrightnessAdjustment), 0));
-
-            BitmapQuadPixel.m128i_u8[6] = min(255, max((BitmapQuadPixel.m128i_u8[6] + BrightnessAdjustment), 0));
-
-            BitmapQuadPixel.m128i_u8[7] = min(255, max((BitmapQuadPixel.m128i_u8[7] + BrightnessAdjustment), 0));
-
-            BitmapQuadPixel.m128i_u8[8] = min(255, max((BitmapQuadPixel.m128i_u8[8] + BrightnessAdjustment), 0));
-
-            BitmapQuadPixel.m128i_u8[9] = min(255, max((BitmapQuadPixel.m128i_u8[9] + BrightnessAdjustment), 0));
-
-            BitmapQuadPixel.m128i_u8[10] = min(255, max((BitmapQuadPixel.m128i_u8[10] + BrightnessAdjustment), 0));
-
-            BitmapQuadPixel.m128i_u8[11] = min(255, max((BitmapQuadPixel.m128i_u8[11] + BrightnessAdjustment), 0));
-
-            BitmapQuadPixel.m128i_u8[12] = min(255, max((BitmapQuadPixel.m128i_u8[12] + BrightnessAdjustment), 0));
-
-            BitmapQuadPixel.m128i_u8[13] = min(255, max((BitmapQuadPixel.m128i_u8[13] + BrightnessAdjustment), 0));
-
-            BitmapQuadPixel.m128i_u8[14] = min(255, max((BitmapQuadPixel.m128i_u8[14] + BrightnessAdjustment), 0));
-
-            BitmapQuadPixel.m128i_u8[15] = min(255, max((BitmapQuadPixel.m128i_u8[15] + BrightnessAdjustment), 0));
-
-
-            _mm_store_si128((PIXEL32*)gBackBuffer.Memory + MemoryOffset, BitmapQuadPixel);
-    }
-}
 #else
     PIXEL32 BitmapPixel = { 0 };
 
@@ -1725,6 +1655,18 @@ void RednerFrameGraphics(void)
             
             break;
         }
+        case GAMESTATE_SAVEGAME:
+        {
+            DrawGameSavedScreen();
+
+            break;
+        }
+        case GAMESTATE_NEWGAMEPROMPT:
+        {
+            DrawNewGamePrompt();
+
+            break;
+        }
         default:
         {
             ASSERT(FALSE, "Game state not implemented");
@@ -1918,15 +1860,6 @@ DWORD LoadRegistryParameters(void)
 
     LogMessageA(Informational, "[%s] gPlayer.WorldPos.x is %d", __FUNCTION__, gPlayer.WorldPos.x);
 
-    if (gPlayer.WorldPos.x > gOverwrldArea.left && gPlayer.WorldPos.x < gOverwrldArea.right)
-    {
-        gCurrentArea = gOverwrldArea;
-    }
-    else if (gPlayer.WorldPos.x > gDungeon1Area.left && gPlayer.WorldPos.x < gDungeon1Area.right)
-    {
-        gCurrentArea = gDungeon1Area;
-    }
-
     Result = RegGetValueA(RegKey, NULL, "gPlayer.ScreenPos.y", RRF_RT_DWORD, NULL, (BYTE*)&gRegistryParams.ScreenY, &RegBytesRead);
 
     if (Result != ERROR_SUCCESS)
@@ -2021,6 +1954,15 @@ DWORD LoadRegistryParameters(void)
     gCamera.x = gRegistryParams.CameraX;
 
     LogMessageA(Informational, "[%s] gCamera.x is %d", __FUNCTION__, gCamera.x);
+
+    if (gCamera.x < gOverwrldArea.right - 64)
+    {
+        gCurrentArea = gOverwrldArea;
+    }
+    else if (gCamera.x >= gDungeon1Area.left)
+    {
+        gCurrentArea = gDungeon1Area;
+    }
 
     Result = RegGetValueA(RegKey, NULL, "gCamera.y", RRF_RT_DWORD, NULL, (BYTE*)&gRegistryParams.CameraY, &RegBytesRead);
 
@@ -2118,6 +2060,223 @@ DWORD LoadRegistryParameters(void)
 
     LogMessageA(Informational, "[%s] gPlayer.MovementRemaining is %d", __FUNCTION__, gPlayer.MovementRemaining);
 
+    Result = RegGetValueA(RegKey, NULL, "gRegistryParams.GameSaved", RRF_RT_DWORD, NULL, (BYTE*)&gRegistryParams.GameSaved, &RegBytesRead);
+
+    if (Result != ERROR_SUCCESS)
+    {
+        if (Result == ERROR_FILE_NOT_FOUND)
+        {
+            Result = ERROR_SUCCESS;
+
+            LogMessageA(Informational, "[%s] Registry value 'gRegistryParams.GameSaved' not found. Using default of 0", __FUNCTION__);
+
+            gRegistryParams.GameSaved = 0;
+        }
+        else
+        {
+            LogMessageA(Error, "[%s] Failed to read the 'gRegistryParams.GameSaved' registry value! Error 0x%08lx!", __FUNCTION__, Result);
+
+            goto Exit;
+        }
+    }
+
+    gPlayer.MovementRemaining = gRegistryParams.MovementsRemaining;
+
+    LogMessageA(Informational, "[%s] gRegistryParams.GameSaved is %d", __FUNCTION__, gRegistryParams.GameSaved);
+
+    Result = RegGetValueA(RegKey, NULL, "gRegistryParams.Name[0]", RRF_RT_REG_SZ, NULL, (void*)&gRegistryParams.Name[0], &RegBytesRead);
+
+    if (Result != ERROR_SUCCESS)
+    {
+        if (Result == ERROR_FILE_NOT_FOUND)
+        {
+            Result = ERROR_SUCCESS;
+
+            LogMessageA(Informational, "[%s] Registry value 'gRegistryParams.Name[0]' not found. Using default of 0", __FUNCTION__);
+
+            gRegistryParams.Name[0] = '\0';
+        }
+        else
+        {
+            LogMessageA(Error, "[%s] Failed to read the 'gRegistryParams.Name[0]' registry value! Error 0x%08lx!", __FUNCTION__, Result);
+
+            goto Exit;
+        }
+    }
+
+    gPlayer.Name[0] = gRegistryParams.Name[0];
+
+    LogMessageA(Informational, "[%s] gRegistryParams.Name[0] is %c", __FUNCTION__, gPlayer.Name[0]);
+
+    Result = RegGetValueA(RegKey, NULL, "gRegistryParams.Name[1]", RRF_RT_REG_SZ, NULL, (void*)&gRegistryParams.Name[1], &RegBytesRead);
+
+    if (Result != ERROR_SUCCESS)
+    {
+        if (Result == ERROR_FILE_NOT_FOUND)
+        {
+            Result = ERROR_SUCCESS;
+
+            LogMessageA(Informational, "[%s] Registry value 'gRegistryParams.Name[1]' not found. Using default of 0", __FUNCTION__);
+
+            gRegistryParams.Name[1] = '\0';
+        }
+        else
+        {
+            LogMessageA(Error, "[%s] Failed to read the 'gRegistryParams.Name[1]' registry value! Error 0x%08lx!", __FUNCTION__, Result);
+
+            goto Exit;
+        }
+    }
+
+    gPlayer.Name[1] = gRegistryParams.Name[1];
+
+    LogMessageA(Informational, "[%s] gRegistryParams.Name[1] is %c", __FUNCTION__, gPlayer.Name[1]);
+
+    Result = RegGetValueA(RegKey, NULL, "gRegistryParams.Name[2]", RRF_RT_REG_SZ, NULL, (void*)&gRegistryParams.Name[2], &RegBytesRead);
+
+    if (Result != ERROR_SUCCESS)
+    {
+        if (Result == ERROR_FILE_NOT_FOUND)
+        {
+            Result = ERROR_SUCCESS;
+
+            LogMessageA(Informational, "[%s] Registry value 'gRegistryParams.Name[2]' not found. Using default of 0", __FUNCTION__);
+
+            gRegistryParams.Name[2] = '\0';
+        }
+        else
+        {
+            LogMessageA(Error, "[%s] Failed to read the 'gRegistryParams.Name[2]' registry value! Error 0x%08lx!", __FUNCTION__, Result);
+
+            goto Exit;
+        }
+    }
+
+    gPlayer.Name[2] = gRegistryParams.Name[2];
+
+    LogMessageA(Informational, "[%s] gRegistryParams.Name[2] is %c", __FUNCTION__, gPlayer.Name[2]);
+
+    Result = RegGetValueA(RegKey, NULL, "gRegistryParams.Name[3]", RRF_RT_REG_SZ, NULL, (void*)&gRegistryParams.Name[3], &RegBytesRead);
+
+    if (Result != ERROR_SUCCESS)
+    {
+        if (Result == ERROR_FILE_NOT_FOUND)
+        {
+            Result = ERROR_SUCCESS;
+
+            LogMessageA(Informational, "[%s] Registry value 'gRegistryParams.Name[3]' not found. Using default of 0", __FUNCTION__);
+
+            gRegistryParams.Name[3] = '\0';
+        }
+        else
+        {
+            LogMessageA(Error, "[%s] Failed to read the 'gRegistryParams.Name[3]' registry value! Error 0x%08lx!", __FUNCTION__, Result);
+
+            goto Exit;
+        }
+    }
+
+    gPlayer.Name[3] = gRegistryParams.Name[3];
+
+    LogMessageA(Informational, "[%s] gRegistryParams.Name[3] is %c", __FUNCTION__, gPlayer.Name[3]);
+
+    Result = RegGetValueA(RegKey, NULL, "gRegistryParams.Name[4]", RRF_RT_REG_SZ, NULL, (void*)&gRegistryParams.Name[4], &RegBytesRead);
+
+    if (Result != ERROR_SUCCESS)
+    {
+        if (Result == ERROR_FILE_NOT_FOUND)
+        {
+            Result = ERROR_SUCCESS;
+
+            LogMessageA(Informational, "[%s] Registry value 'gRegistryParams.Name[4]' not found. Using default of 0", __FUNCTION__);
+
+            gRegistryParams.Name[4] = '\0';
+        }
+        else
+        {
+            LogMessageA(Error, "[%s] Failed to read the 'gRegistryParams.Name[4]' registry value! Error 0x%08lx!", __FUNCTION__, Result);
+
+            goto Exit;
+        }
+    }
+
+    gPlayer.Name[4] = gRegistryParams.Name[4];
+
+    LogMessageA(Informational, "[%s] gRegistryParams.Name[4] is %c", __FUNCTION__, gPlayer.Name[4]);
+
+    Result = RegGetValueA(RegKey, NULL, "gRegistryParams.Name[5]", RRF_RT_REG_SZ, NULL, (void*)&gRegistryParams.Name[5], &RegBytesRead);
+
+    if (Result != ERROR_SUCCESS)
+    {
+        if (Result == ERROR_FILE_NOT_FOUND)
+        {
+            Result = ERROR_SUCCESS;
+
+            LogMessageA(Informational, "[%s] Registry value 'gRegistryParams.Name[5]' not found. Using default of 0", __FUNCTION__);
+
+            gRegistryParams.Name[5] = '\0';
+        }
+        else
+        {
+            LogMessageA(Error, "[%s] Failed to read the 'gRegistryParams.Name[5]' registry value! Error 0x%08lx!", __FUNCTION__, Result);
+
+            goto Exit;
+        }
+    }
+
+    gPlayer.Name[5] = gRegistryParams.Name[5];
+
+    LogMessageA(Informational, "[%s] gRegistryParams.Name[5] is %c", __FUNCTION__, gPlayer.Name[5]);
+
+    Result = RegGetValueA(RegKey, NULL, "gRegistryParams.Name[6]", RRF_RT_REG_SZ, NULL, (void*)&gRegistryParams.Name[6], &RegBytesRead);
+
+    if (Result != ERROR_SUCCESS)
+    {
+        if (Result == ERROR_FILE_NOT_FOUND)
+        {
+            Result = ERROR_SUCCESS;
+
+            LogMessageA(Informational, "[%s] Registry value 'gRegistryParams.Name[6]' not found. Using default of 0", __FUNCTION__);
+
+            gRegistryParams.Name[6] = '\0';
+        }
+        else
+        {
+            LogMessageA(Error, "[%s] Failed to read the 'gRegistryParams.Name[6]' registry value! Error 0x%08lx!", __FUNCTION__, Result);
+
+            goto Exit;
+        }
+    }
+
+    gPlayer.Name[6] = gRegistryParams.Name[6];
+
+    LogMessageA(Informational, "[%s] gRegistryParams.Name[6] is %c", __FUNCTION__, gPlayer.Name[6]);
+
+    Result = RegGetValueA(RegKey, NULL, "gRegistryParams.Name[7]", RRF_RT_REG_SZ, NULL, (void*)&gRegistryParams.Name[7], &RegBytesRead);
+
+    if (Result != ERROR_SUCCESS)
+    {
+        if (Result == ERROR_FILE_NOT_FOUND)
+        {
+            Result = ERROR_SUCCESS;
+
+            LogMessageA(Informational, "[%s] Registry value 'gRegistryParams.Name[7]' not found. Using default of 0", __FUNCTION__);
+
+            gRegistryParams.Name[7] = '\0';
+        }
+        else
+        {
+            LogMessageA(Error, "[%s] Failed to read the 'gRegistryParams.Name[7]' registry value! Error 0x%08lx!", __FUNCTION__, Result);
+
+            goto Exit;
+        }
+    }
+
+    gPlayer.Name[7] = gRegistryParams.Name[7];
+
+    LogMessageA(Informational, "[%s] gRegistryParams.Name[7] is %c", __FUNCTION__, gPlayer.Name[7]);
+
+    
 Exit:
 
     if (RegKey)
@@ -2301,6 +2460,106 @@ DWORD SaveRegistryParametars(void)
 
     LogMessageA(Informational, "[%s] gPlayer.CurrentArmor saved: %d", __FUNCTION__, gPlayer.CurrentArmor);
 
+    Result = RegSetValueExA(RegKey, "gRegistryParams.GameSaved", 0, REG_DWORD, &gRegistryParams.GameSaved, sizeof(DWORD));
+
+    if (Result != ERROR_SUCCESS)
+    {
+        LogMessageA(Error, "[%s] Failed to set 'gRegistryParams.GameSaved' in the registry! Error 0x%08lx!", __FUNCTION__, Result);
+
+        goto Exit;
+    }
+
+    LogMessageA(Informational, "[%s] gRegistryParams.GameSaved saved: %d", __FUNCTION__, gRegistryParams.GameSaved);
+    
+    Result = RegSetValueExA(RegKey, "gRegistryParams.Name[0]", 0, REG_SZ, &gPlayer.Name[0], sizeof(char));
+
+    if (Result != ERROR_SUCCESS)
+    {
+        LogMessageA(Error, "[%s] Failed to set 'gRegistryParams.Name[0]' in the registry! Error 0x%08lx!", __FUNCTION__, Result);
+
+        goto Exit;
+    }
+
+    LogMessageA(Informational, "[%s] gRegistryParams.Name[0] saved: %c", __FUNCTION__, gPlayer.Name[0]);
+
+    Result = RegSetValueExA(RegKey, "gRegistryParams.Name[1]", 0, REG_SZ, &gPlayer.Name[1], sizeof(char));
+
+    if (Result != ERROR_SUCCESS)
+    {
+        LogMessageA(Error, "[%s] Failed to set 'gRegistryParams.Name[1]' in the registry! Error 0x%08lx!", __FUNCTION__, Result);
+
+        goto Exit;
+    }
+
+    LogMessageA(Informational, "[%s] gRegistryParams.Name[1] saved: %c", __FUNCTION__, gPlayer.Name[1]);
+
+    Result = RegSetValueExA(RegKey, "gRegistryParams.Name[2]", 0, REG_SZ, &gPlayer.Name[2], sizeof(char));
+
+    if (Result != ERROR_SUCCESS)
+    {
+        LogMessageA(Error, "[%s] Failed to set 'gRegistryParams.Name[2]' in the registry! Error 0x%08lx!", __FUNCTION__, Result);
+
+        goto Exit;
+    }
+
+    LogMessageA(Informational, "[%s] gRegistryParams.Name[2] saved: %c", __FUNCTION__, gPlayer.Name[2]);
+
+    Result = RegSetValueExA(RegKey, "gRegistryParams.Name[3]", 0, REG_SZ, &gPlayer.Name[3], sizeof(char));
+
+    if (Result != ERROR_SUCCESS)
+    {
+        LogMessageA(Error, "[%s] Failed to set 'gRegistryParams.Name[3]' in the registry! Error 0x%08lx!", __FUNCTION__, Result);
+
+        goto Exit;
+    }
+
+    LogMessageA(Informational, "[%s] gRegistryParams.Name[3] saved: %c", __FUNCTION__, gPlayer.Name[3]);
+
+    Result = RegSetValueExA(RegKey, "gRegistryParams.Name[4]", 0, REG_SZ, &gPlayer.Name[4], sizeof(char));
+
+    if (Result != ERROR_SUCCESS)
+    {
+        LogMessageA(Error, "[%s] Failed to set 'gRegistryParams.Name[4]' in the registry! Error 0x%08lx!", __FUNCTION__, Result);
+
+        goto Exit;
+    }
+
+    LogMessageA(Informational, "[%s] gRegistryParams.Name[4] saved: %c", __FUNCTION__, gPlayer.Name[4]);
+
+    Result = RegSetValueExA(RegKey, "gRegistryParams.Name[5]", 0, REG_SZ, &gPlayer.Name[5], sizeof(char));
+
+    if (Result != ERROR_SUCCESS)
+    {
+        LogMessageA(Error, "[%s] Failed to set 'gRegistryParams.Name[5]' in the registry! Error 0x%08lx!", __FUNCTION__, Result);
+
+        goto Exit;
+    }
+
+    LogMessageA(Informational, "[%s] gRegistryParams.Name[5] saved: %c", __FUNCTION__, gPlayer.Name[5]);
+
+    Result = RegSetValueExA(RegKey, "gRegistryParams.Name[6]", 0, REG_SZ, &gPlayer.Name[6], sizeof(char));
+
+    if (Result != ERROR_SUCCESS)
+    {
+        LogMessageA(Error, "[%s] Failed to set 'gRegistryParams.Name[6]' in the registry! Error 0x%08lx!", __FUNCTION__, Result);
+
+        goto Exit;
+    }
+
+    LogMessageA(Informational, "[%s] gRegistryParams.Name[6] saved: %c", __FUNCTION__, gPlayer.Name[6]);
+
+    Result = RegSetValueExA(RegKey, "gRegistryParams.Name[7]", 0, REG_SZ, &gPlayer.Name[7], sizeof(char));
+
+    if (Result != ERROR_SUCCESS)
+    {
+        LogMessageA(Error, "[%s] Failed to set 'gRegistryParams.Name[7]' in the registry! Error 0x%08lx!", __FUNCTION__, Result);
+
+        goto Exit;
+    }
+
+    LogMessageA(Informational, "[%s] gRegistryParams.Name[7] saved: %c", __FUNCTION__, gPlayer.Name[7]);
+
+
 Exit:
 
     if (RegKey)
@@ -2390,6 +2649,7 @@ void LogMessageA(_In_ DWORD LogLevel, _In_ char* Message, _In_ ...)
     _snprintf_s(DateTimeString, sizeof(DateTimeString), _TRUNCATE, "\r\n[%02u/%02u/%u %02u:%02u:%02u.%03u]", Time.wMonth, Time.wDay, Time.wYear, Time.wHour, Time.wMinute, Time.wSecond, Time.wMilliseconds);
 
     EnterCriticalSection(&gLogCritSec);
+    
 
     if ((LogFileHandle = CreateFileA(LOG_FILE_NAME, FILE_APPEND_DATA, FILE_SHARE_READ, NULL, OPEN_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL)) == INVALID_HANDLE_VALUE)
     {
@@ -4026,6 +4286,11 @@ void InitializeGlobals(void)
     gPassablieTiles[3] = TILE_PORTAL_01;
 
     gPassablieTiles[4] = TILE_BRICK_01;
+
+    for (int Counter = 0; Counter < 9; Counter++)
+    {
+        gPlayer.Name[Counter] = '\0';
+    }
 
     gCurrentGameState = GAMESTATE_OPENINGSPLASHSCREEN;
 

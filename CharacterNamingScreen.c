@@ -287,6 +287,8 @@ void PPI_CharacterNaming(void)
         {
             gMenu_CharacterNaming.SelectedItem--;
         }
+
+        PlayGameSound(&gSoundMenuNavigate);
     }
 
     if (gGameInput.ChooseKeyIsDown && !gGameInput.ChooseKeyWasDown)
@@ -304,7 +306,6 @@ void PPI_CharacterNaming(void)
 
 void MenuItem_CharacterNaming_Add(void)
 {
-
     if (strlen(gPlayer.Name) < 8)
     {
         gPlayer.Name[strlen(gPlayer.Name)] = gMenu_CharacterNaming.Items[gMenu_CharacterNaming.SelectedItem]->Name[0];

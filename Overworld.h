@@ -25,12 +25,6 @@ PORTAL gPortal002;
 
 PORTAL gPortals[2];
 
-RECT gCurrentArea;
-
-RECT gOverwrldArea;
-
-RECT gDungeon1Area;
-
 BOOL PortalIsUsed;
 
 BOOL AnimationAfterPortal;
