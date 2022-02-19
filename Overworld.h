@@ -17,7 +17,21 @@ typedef struct PORTAL
 	// in which area the player will be moved
 	RECT Area;
 
+	char* AreaName;
+
+	int16_t ID;
+
 } PORTAL;
+
+typedef struct GAMEAREA
+{
+	char* Name;
+
+	RECT Area;
+
+	GAMESOUND Music;
+
+} GAMEAREA;
 
 PORTAL gPortal001;
 
@@ -28,6 +42,8 @@ PORTAL gPortals[2];
 BOOL PortalIsUsed;
 
 BOOL AnimationAfterPortal;
+
+int16_t PortalId;
 
 void DrawOverworld(void);
 

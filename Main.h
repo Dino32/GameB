@@ -456,7 +456,7 @@ UPOINT gCamera;
 
 HANDLE gAssetLoadingThreadHandle;
 
-uint8_t gPassablieTiles[5];
+uint8_t gPassablieTiles[6];
 
 RECT gCurrentArea;
 
@@ -526,6 +526,8 @@ DWORD LoadAssetFromArchive(_In_ char* ArchiveName, _In_ char* AssetFileName, _In
 DWORD AssetLoadingThreadProc(_In_ LPVOID lpParam);
 
 void InitializeGlobals(void);
+
+BOOL MusicIsPlaying(void);
 
 #ifdef SIMD
 void ClearScreen(_In_ __m128i* Color);

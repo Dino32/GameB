@@ -2,6 +2,7 @@
 
 #include "Overworld.h"
 
+
 void DrawOverworld(void)
 {
     static uint64_t LocalFrameCounter;
@@ -25,7 +26,10 @@ void DrawOverworld(void)
 
     if (LocalFrameCounter == 60)
     {
-        PlayGameMusic(&gMusicOverworld01);
+        if (MusicIsPlaying() == FALSE)
+        {
+            PlayGameMusic(&gMusicOverworld01);
+        }
     }
 
     if (LocalFrameCounter >= 0)
@@ -73,7 +77,9 @@ void DrawOverworld(void)
 
                 memcpy_s((PIXEL32*)gBackBuffer.Memory + MemoryOffsetLeft, sizeof(PIXEL32), &Pixel, sizeof(PIXEL32));
             }
-        }        
+        } 
+
+        gPerformanceData.DisplayDegubInfo = FALSE;
 
         if (XPixel <= GAME_RES_WIDTH / 2)
         {
@@ -104,6 +110,8 @@ void DrawOverworld(void)
         BlitTileMapToBuffer(&gOverWorld01.GameBitmap, BrightnessAdjustment);
 
         Blit32BppBitmapToBuffer(&gPlayer.Sprite[gPlayer.CurrentArmor][gPlayer.SpriteIndex + gPlayer.Direction], gPlayer.ScreenPos.x, gPlayer.ScreenPos.y, BrightnessAdjustment);
+
+        BlitStringToBuffer(gPortals[PortalId].AreaName, &g6x7Font, (PIXEL32) { 0xff, 0xff, 0xff, 0xff }, (GAME_RES_WIDTH / 2) - (strlen(gPortals[PortalId].AreaName) * 6) / 2, 110);
 
         for (int8_t i = 0; i < 3; i++)
         {
@@ -145,41 +153,61 @@ void DrawOverworld(void)
         Blit32BppBitmapToBuffer(&gPlayer.Sprite[gPlayer.CurrentArmor][gPlayer.SpriteIndex + gPlayer.Direction], gPlayer.ScreenPos.x, gPlayer.ScreenPos.y, BrightnessAdjustment);
     }
 
-    if (gPerformanceData.DisplayDegubInfo)
+    if (gPerformanceData.DisplayDegubInfo && !PortalIsUsed)
     {
-        char* Buffer[4] = { 0 };
+        if (gPlayer.WorldPos.y >= gCurrentArea.top + 16)
+        {
+            if (gPlayer.WorldPos.x <= gCurrentArea.left + 16)
+            {
+                BlitStringToBuffer(gPlayer.Name, &g6x7Font, (PIXEL32) { 0xff, 0xff, 0xff, 0xff }, gPlayer.ScreenPos.x - strlen(gPlayer.Name) + 32, gPlayer.ScreenPos.y + 4);
+            }
+            else if (gPlayer.WorldPos.x >= gCurrentArea.right - 32)
+            {
+                BlitStringToBuffer(gPlayer.Name, &g6x7Font, (PIXEL32) { 0xff, 0xff, 0xff, 0xff }, gPlayer.ScreenPos.x - strlen(gPlayer.Name) - 32, gPlayer.ScreenPos.y + 4);
+            }
+            else
+            {
+                BlitStringToBuffer(gPlayer.Name, &g6x7Font, (PIXEL32) { 0xff, 0xff, 0xff, 0xff }, gPlayer.ScreenPos.x - strlen(gPlayer.Name), gPlayer.ScreenPos.y - 8);
+            }
+        }
+        else
+        {
+            BlitStringToBuffer(gPlayer.Name, &g6x7Font, (PIXEL32) { 0xff, 0xff, 0xff, 0xff }, gPlayer.ScreenPos.x - strlen(gPlayer.Name), gPlayer.ScreenPos.y + 16);
+        }
+
+        /*char* Buffer[4] = {0};
 
         _itoa_s(gOverWorld01.TIleMap.Map[gPlayer.WorldPos.y / 16][gPlayer.WorldPos.x / 16], Buffer, sizeof(Buffer), 10);
 
         BlitStringToBuffer(Buffer, &g6x7Font, (PIXEL32) { 0xff, 0xff, 0xff, 0xff }, (gPlayer.ScreenPos.x) + 5, gPlayer.ScreenPos.y + 4);
 
-        if (gPlayer.WorldPos.x <= gCurrentArea.right -32)
-        {
+       if (gPlayer.WorldPos.x <= gCurrentArea.right - 32)
+       {
             _itoa_s(gOverWorld01.TIleMap.Map[(gPlayer.WorldPos.y) / 16][(gPlayer.WorldPos.x + 16) / 16], Buffer, sizeof(Buffer), 10);
-
+    
             BlitStringToBuffer(Buffer, &g6x7Font, (PIXEL32) { 0xff, 0xff, 0xff, 0xff }, (gPlayer.ScreenPos.x + 16) + 5, gPlayer.ScreenPos.y + 4);
         }
-
-        if (gPlayer.WorldPos.x >= gCurrentArea.left + 16)
-        {
-            _itoa_s(gOverWorld01.TIleMap.Map[(gPlayer.WorldPos.y) / 16][(gPlayer.WorldPos.x - 16) / 16], Buffer, sizeof(Buffer), 10);
-
-            BlitStringToBuffer(Buffer, &g6x7Font, (PIXEL32) { 0xff, 0xff, 0xff, 0xff }, (gPlayer.ScreenPos.x - 16) + 5, gPlayer.ScreenPos.y + 4);
-        }
-
-        if (gPlayer.WorldPos.y <= gCurrentArea.bottom - 32)
-        {
-            _itoa_s(gOverWorld01.TIleMap.Map[(gPlayer.WorldPos.y + 16) / 16][(gPlayer.WorldPos.x) / 16], Buffer, sizeof(Buffer), 10);
-
-            BlitStringToBuffer(Buffer, &g6x7Font, (PIXEL32) { 0xff, 0xff, 0xff, 0xff }, (gPlayer.ScreenPos.x) + 5, gPlayer.ScreenPos.y + 16 + 4);
-        }
-
-        if (gPlayer.WorldPos.y >= 16)
-        {
-            _itoa_s(gOverWorld01.TIleMap.Map[(gPlayer.WorldPos.y - 16) / 16][(gPlayer.WorldPos.x) / 16], Buffer, sizeof(Buffer), 10);
-
-            BlitStringToBuffer(Buffer, &g6x7Font, (PIXEL32) { 0xff, 0xff, 0xff, 0xff }, (gPlayer.ScreenPos.x) + 5, gPlayer.ScreenPos.y - 16 + 4);
-        }
+    
+           if (gPlayer.WorldPos.x >= gCurrentArea.left + 16)
+           {
+               _itoa_s(gOverWorld01.TIleMap.Map[(gPlayer.WorldPos.y) / 16][(gPlayer.WorldPos.x - 16) / 16], Buffer, sizeof(Buffer), 10);
+    
+               BlitStringToBuffer(Buffer, &g6x7Font, (PIXEL32) { 0xff, 0xff, 0xff, 0xff }, (gPlayer.ScreenPos.x - 16) + 5, gPlayer.ScreenPos.y + 4);
+           }
+    
+           if (gPlayer.WorldPos.y <= gCurrentArea.bottom - 32)
+           {
+               _itoa_s(gOverWorld01.TIleMap.Map[(gPlayer.WorldPos.y + 16) / 16][(gPlayer.WorldPos.x) / 16], Buffer, sizeof(Buffer), 10);
+    
+               BlitStringToBuffer(Buffer, &g6x7Font, (PIXEL32) { 0xff, 0xff, 0xff, 0xff }, (gPlayer.ScreenPos.x) + 5, gPlayer.ScreenPos.y + 16 + 4);
+           }
+    
+           if (gPlayer.WorldPos.y >= 16)
+           {
+               _itoa_s(gOverWorld01.TIleMap.Map[(gPlayer.WorldPos.y - 16) / 16][(gPlayer.WorldPos.x) / 16], Buffer, sizeof(Buffer), 10);
+    
+               BlitStringToBuffer(Buffer, &g6x7Font, (PIXEL32) { 0xff, 0xff, 0xff, 0xff }, (gPlayer.ScreenPos.x) + 5, gPlayer.ScreenPos.y - 16 + 4);
+           }*/
     }
 
     LocalFrameCounter++;
@@ -471,6 +499,8 @@ void PortalHandler(void)
         if (gPlayer.WorldPos.x == gPortals[Counter].WorldPos.x && gPlayer.WorldPos.y == gPortals[Counter].WorldPos.y)
         {
             PortalFound = TRUE;
+
+            PortalId = Counter;
 
             gPlayer.WorldPos.x = gPortals[Counter].WorldDest.x;
 

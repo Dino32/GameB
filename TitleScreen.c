@@ -153,24 +153,11 @@ void PPI_TitleScreen(void)
 
     if (gGameInput.UpKeyIsDown && !gGameInput.UpKeyWasDown)
     {
-        if (gMenu_TitleScreen.SelectedItem > 0)
+        if (gMenu_TitleScreen.SelectedItem > 0 && gMenu_TitleScreen.Items[gMenu_TitleScreen.SelectedItem])
         {
-            if (gMenu_TitleScreen.SelectedItem == 1 && gRegistryParams.GameSaved == 1)
-            {
-                gMenu_TitleScreen.SelectedItem--;
+            gMenu_TitleScreen.SelectedItem--;
 
-                PlayGameSound(&gSoundMenuNavigate);
-            }
-            else if (gMenu_TitleScreen.SelectedItem == 1 && gRegistryParams.GameSaved == 0)
-            {
-
-            }
-            else
-            {
-                gMenu_TitleScreen.SelectedItem--;
-
-                PlayGameSound(&gSoundMenuNavigate);
-            }
+            PlayGameSound(&gSoundMenuNavigate);
         }
 
         

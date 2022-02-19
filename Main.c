@@ -744,45 +744,87 @@ void Blit32BppBitmapToBuffer(_In_ GAMEBITMAP* GameBitmap, _In_ int16_t x, _In_ i
 
     PIXEL32 BitmapPixel = { 0 };
 
+#ifdef AVX
+
+    __m256i BitmapOctoPixel;
+
+    for (int16_t YPixel = 0; YPixel < GameBitmap->Bitmapinfo.bmiHeader.biHeight; YPixel++)
+    {
+        int16_t PixelsRemainingOnThisRow = GameBitmap->Bitmapinfo.bmiHeader.biWidth;
+
+        int16_t XPixel = 0;
+
+        while (PixelsRemainingOnThisRow >= 8)
+        {
+            MemoryOffset = StartingScreenPixel + XPixel - (GAME_RES_WIDTH * YPixel);
+
+            BitmapOffset = StartingBitmapPixel + XPixel - (GameBitmap->Bitmapinfo.bmiHeader.biWidth * YPixel);
+
+            BitmapOctoPixel = _mm256_load_si256((const __m256i*)((PIXEL32*)GameBitmap->Memory + BitmapOffset));
+            
+            __m256i Half1 = _mm256_cvtepu8_epi16(_mm256_extracti128_si256(BitmapOctoPixel, 0));
+
+            Half1 = _mm256_add_epi16(Half1, _mm256_set_epi16(
+                0, BrightnessAdjustment, BrightnessAdjustment, BrightnessAdjustment,
+                0, BrightnessAdjustment, BrightnessAdjustment, BrightnessAdjustment,
+                0, BrightnessAdjustment, BrightnessAdjustment, BrightnessAdjustment,
+                0, BrightnessAdjustment, BrightnessAdjustment, BrightnessAdjustment));
+
+            __m256i Half2 = _mm256_cvtepu8_epi16(_mm256_extracti128_si256(BitmapOctoPixel, 1));
+
+            Half2 = _mm256_add_epi16(Half2, _mm256_set_epi16(
+                0, BrightnessAdjustment, BrightnessAdjustment, BrightnessAdjustment,
+                0, BrightnessAdjustment, BrightnessAdjustment, BrightnessAdjustment,
+                0, BrightnessAdjustment, BrightnessAdjustment, BrightnessAdjustment,
+                0, BrightnessAdjustment, BrightnessAdjustment, BrightnessAdjustment));
+
+            __m256i Recombined = _mm256_packus_epi16(Half1, Half2);
+
+            BitmapOctoPixel = _mm256_permute4x64_epi64(Recombined, _MM_SHUFFLE(3, 1, 2, 0));
+
+            __m256i Mask = _mm256_cmpeq_epi8(BitmapOctoPixel, _mm256_set1_epi32(0xFF000000));
+
+            _mm256_maskstore_epi32((__m256i*)((PIXEL32*)gBackBuffer.Memory + MemoryOffset), Mask, BitmapOctoPixel);
+
+            // Store the result to the global back buffer.
+            //_mm256_store_si256((__m256i*)((PIXEL32*)gBackBuffer.Memory + MemoryOffset), BitmapOctoPixel);
+
+            PixelsRemainingOnThisRow -= 8;
+
+            XPixel += 8;
+        }
+
+        while (PixelsRemainingOnThisRow > 0)
+        {
+            MemoryOffset = StartingScreenPixel + XPixel - (GAME_RES_WIDTH * YPixel);
+
+            BitmapOffset = StartingBitmapPixel + XPixel - (GameBitmap->Bitmapinfo.bmiHeader.biWidth * YPixel);
+
+            memcpy_s(&BitmapPixel, sizeof(PIXEL32), (PIXEL32*)GameBitmap->Memory + BitmapOffset, sizeof(PIXEL32));
+
+            if (BitmapPixel.Alpha == 255)
+            {
+                BitmapPixel.Red = min(255, max((BitmapPixel.Red + BrightnessAdjustment), 0));
+
+                BitmapPixel.Blue = min(255, max((BitmapPixel.Blue + BrightnessAdjustment), 0));
+
+                BitmapPixel.Green = min(255, max((BitmapPixel.Green + BrightnessAdjustment), 0));
+
+                memcpy_s((PIXEL32*)gBackBuffer.Memory + MemoryOffset, sizeof(PIXEL32), &BitmapPixel, sizeof(PIXEL32));
+            }
+
+            PixelsRemainingOnThisRow--;
+
+            XPixel++;
+        }
+    }
+
+#else
+
     for (int16_t YPixel = 0; YPixel < (GameBitmap->Bitmapinfo.bmiHeader.biHeight); YPixel++)
     {
         for (int16_t XPixel = 0; XPixel < (GameBitmap->Bitmapinfo.bmiHeader.biWidth); XPixel++)
         { 
-            if ((x < 1) || (x > GAME_RES_WIDTH - GameBitmap->Bitmapinfo.bmiHeader.biWidth) ||
-                (y > 1) || (y > GAME_RES_HEIGHT - GameBitmap->Bitmapinfo.bmiHeader.biHeight))
-            {
-                if (x < 1)
-                {
-                    if (XPixel < -x)
-                    {
-                        break;
-                    }
-                }
-                else if (x > GAME_RES_WIDTH - GameBitmap->Bitmapinfo.bmiHeader.biWidth)
-                {
-                    if (XPixel > GAME_RES_WIDTH - x - 1)
-                    {
-                        break;
-                    }
-                }
-
-                if (y < 1)
-                {
-                    if (YPixel < -y)
-                    {
-                        break;
-                    }
-                }
-                else if (y > GAME_RES_HEIGHT - GameBitmap->Bitmapinfo.bmiHeader.biHeight)
-                {
-                    if (YPixel > GAME_RES_HEIGHT - y - 1)
-                    {
-                        break;
-                    }
-                }
-            }
-
-
             MemoryOffset = StartingScreenPixel + XPixel - (GAME_RES_WIDTH * YPixel);
 
             BitmapOffset = StartingBitmapPixel + XPixel - (GameBitmap->Bitmapinfo.bmiHeader.biWidth * YPixel);
@@ -801,6 +843,8 @@ void Blit32BppBitmapToBuffer(_In_ GAMEBITMAP* GameBitmap, _In_ int16_t x, _In_ i
             }
         }
     }
+
+#endif
 }
 
 void BlitTileMapToBuffer(_In_ GAMEBITMAP* GameBitmap, _In_ int16_t BrightnessAdjustment)
@@ -2732,7 +2776,7 @@ void DrawDebugInfo()
 
     snprintf(DebugTextBuffer, sizeof(DebugTextBuffer), "Movment:  %d", gPlayer.MovementRemaining);
 
-    BlitStringToBuffer(DebugTextBuffer, &g6x7Font, White, 0, 100);
+    BlitStringToBuffer(DebugTextBuffer, &g6x7Font, White, 0, 96);
 }
 
 void FindFirstConnctedGamepad(void)
@@ -3605,6 +3649,22 @@ void PlayGameMusic(_In_ GAMESOUND *GameSound)
     
 }
 
+BOOL MusicIsPlaying(void)
+{
+    XAUDIO2_VOICE_STATE State = { 0 };
+
+    gXAudioMusicSourceVoice->lpVtbl->GetState(gXAudioMusicSourceVoice, &State, 0);
+
+    if (State.BuffersQueued > 0)
+    {
+        return TRUE;
+    }
+    else
+    {
+        return FALSE;
+    }
+}
+
 DWORD LoadTilemapFromFile(_In_ char* FileName, _Inout_ TILEMAP* TileMap)
 {
     DWORD Result = ERROR_SUCCESS;
@@ -4287,6 +4347,8 @@ void InitializeGlobals(void)
 
     gPassablieTiles[4] = TILE_BRICK_01;
 
+    gPassablieTiles[5] = TILE_GRAYBRICK_01;
+
     for (int Counter = 0; Counter < 9; Counter++)
     {
         gPlayer.Name[Counter] = '\0';
@@ -4312,6 +4374,10 @@ void InitializeGlobals(void)
 
     //gCurrentArea = gOverwrldArea;
 
+    gPortal001.ID = 1;
+
+    gPortal001.AreaName = "Dungeon Area";
+
     gPortal001.WorldPos.x = 336;
 
     gPortal001.WorldPos.y = 176;
@@ -4329,6 +4395,10 @@ void InitializeGlobals(void)
     gPortal001.ScreenPos.x = 96;
 
     gPortal001.ScreenPos.y = 80;
+
+    gPortal002.AreaName = "Home Town";
+
+    gPortal002.ID = 2;
 
     gPortal002.WorldPos.x = 3952;
 
@@ -4352,3 +4422,4 @@ void InitializeGlobals(void)
 
     gPortals[1] = gPortal002;
 }
+

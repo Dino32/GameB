@@ -13,3 +13,9 @@
 #define TILE_DEBUG_01 6
 
 #define TILE_BRICK_01 7
+
+#define TILE_GRAYBRICK_01 8
+
+#define TILE_GRAYBRICK3D1_01 9
+
+#define TILE_GRAYBRICK3D2_01 10
